@@ -30,17 +30,17 @@ def get_access_token():
     if access_token_data["token"] and access_token_data["expires_at"] > time.time() + 60:
         return access_token_data["token"]
 
-    try:
-       # First try to read private key from environment variable
-       private_key = os.environ.get("SALESFORCE_JWT_KEY")
-       if private_key:
-           logging.info("✅ Found private key in environment (length: %d)", len(private_key))
-       else:
-           if not os.path.exists(SF_JWT_KEY_PATH):
-              raise FileNotFoundError(f"JWT key file not found at {SF_JWT_KEY_PATH}")
-           with open(SF_JWT_KEY_PATH, "r") as key_file:
-               private_key = key_file.read()
-           logging.info("✅ Loaded private key from file")
+   try:
+    # First try to read private key from environment variable
+    private_key = os.environ.get("SALESFORCE_JWT_KEY")
+    if private_key:
+        logging.info("✅ Found private key in environment (length: %d)", len(private_key))
+    else:
+        if not os.path.exists(SF_JWT_KEY_PATH):
+            raise FileNotFoundError(f"JWT key file not found at {SF_JWT_KEY_PATH}")
+        with open(SF_JWT_KEY_PATH, "r") as key_file:
+            private_key = key_file.read()
+        logging.info("✅ Loaded private key from file")
 
     payload = {
         "iss": SF_CLIENT_ID,
@@ -69,10 +69,9 @@ def get_access_token():
     else:
         raise Exception("Failed to get access token from Salesforce.")
 
-    except Exception as e:
+  except Exception as e:
     logging.error(f"Error generating or getting access token: {e}")
     return None
-
 
 
 def call_salesforce_api(payload):
