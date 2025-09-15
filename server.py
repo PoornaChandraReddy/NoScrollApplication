@@ -31,16 +31,16 @@ def get_access_token():
         return access_token_data["token"]
 
     try:
-    # First try to read private key from environment variable
-    private_key = os.environ.get("SALESFORCE_JWT_KEY")
-    if private_key:
-        logging.info("✅ Found private key in environment (length: %d)", len(private_key))
-    else:
-    if not os.path.exists(SF_JWT_KEY_PATH):
-        raise FileNotFoundError(f"JWT key file not found at {SF_JWT_KEY_PATH}")
-    with open(SF_JWT_KEY_PATH, "r") as key_file:
-            private_key = key_file.read()
-    logging.info("✅ Loaded private key from file")
+       # First try to read private key from environment variable
+       private_key = os.environ.get("SALESFORCE_JWT_KEY")
+       if private_key:
+           logging.info("✅ Found private key in environment (length: %d)", len(private_key))
+       else:
+           if not os.path.exists(SF_JWT_KEY_PATH):
+              raise FileNotFoundError(f"JWT key file not found at {SF_JWT_KEY_PATH}")
+           with open(SF_JWT_KEY_PATH, "r") as key_file:
+               private_key = key_file.read()
+           logging.info("✅ Loaded private key from file")
 
     payload = {
         "iss": SF_CLIENT_ID,
