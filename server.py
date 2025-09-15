@@ -30,43 +30,50 @@ def get_access_token():
     if access_token_data["token"] and access_token_data["expires_at"] > time.time() + 60:
         return access_token_data["token"]
 
+    try:
+    # First try to read private key from environment variable
+    private_key = os.environ.get("SALESFORCE_JWT_KEY")
+    if private_key:
+        logging.info("✅ Found private key in environment (length: %d)", len(private_key))
+    else:
     if not os.path.exists(SF_JWT_KEY_PATH):
         raise FileNotFoundError(f"JWT key file not found at {SF_JWT_KEY_PATH}")
-
-    try:
-        with open(SF_JWT_KEY_PATH, 'r') as key_file:
+    with open(SF_JWT_KEY_PATH, "r") as key_file:
             private_key = key_file.read()
+    logging.info("✅ Loaded private key from file")
 
-        payload = {
-            "iss": SF_CLIENT_ID,
-            "sub": SF_USERNAME,
-            "aud": SF_LOGIN_URL,
-            "exp": int(time.time()) + 300  # 5 minutes from now
-        }
-        encoded_jwt = jwt.encode(payload, private_key, algorithm='RS256')
+    payload = {
+        "iss": SF_CLIENT_ID,
+        "sub": SF_USERNAME,
+        "aud": SF_LOGIN_URL,
+        "exp": int(time.time()) + 300  # 5 minutes from now
+    }
+    encoded_jwt = jwt.encode(payload, private_key, algorithm="RS256")
 
-        auth_url = f"{SF_LOGIN_URL}/services/oauth2/token"
-        auth_payload = {
-            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-            "assertion": encoded_jwt
-        }
-        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+    auth_url = f"{SF_LOGIN_URL}/services/oauth2/token"
+    auth_payload = {
+        "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        "assertion": encoded_jwt
+    }
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-        response = requests.post(auth_url, data=auth_payload, headers=headers)
-        response.raise_for_status()
-        auth_response = response.json()
+    response = requests.post(auth_url, data=auth_payload, headers=headers)
+    response.raise_for_status()
+    auth_response = response.json()
 
-        if "access_token" in auth_response:
-            access_token_data["token"] = auth_response["access_token"]
-            access_token_data["expires_at"] = time.time() + auth_response.get("expires_in", 0)
-            logging.info("Successfully refreshed Salesforce access token.")
-            return access_token_data["token"]
-        else:
-            raise Exception("Failed to get access token from Salesforce.")
+    if "access_token" in auth_response:
+        access_token_data["token"] = auth_response["access_token"]
+        access_token_data["expires_at"] = time.time() + auth_response.get("expires_in", 0)
+        logging.info("✅ Successfully refreshed Salesforce access token.")
+        return access_token_data["token"]
+    else:
+        raise Exception("Failed to get access token from Salesforce.")
 
     except Exception as e:
-        logging.error(f"Error generating or getting access token: {e}")
-        return None
+    logging.error(f"Error generating or getting access token: {e}")
+    return None
+
+
 
 def call_salesforce_api(payload):
     """
