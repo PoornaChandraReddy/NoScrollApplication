@@ -444,9 +444,13 @@
 	
 	// --- Instagram Launcher ---
 function openInstagram() {
-  const url = "instagram://app";
+  // ✅ Start timer immediately
+  showPage("session-card"); 
+  startSessionTimer();      
+  showAlert("🚀 Session started! Redirecting to Instagram...", "success");
 
-  // Create a hidden link and simulate a click
+  // ✅ Try deep link first
+  const url = "instagram://app";
   const a = document.createElement("a");
   a.href = url;
   a.style.display = "none";
@@ -454,7 +458,7 @@ function openInstagram() {
   a.click();
   document.body.removeChild(a);
 
-  // Fallback after short delay
+  // ✅ Fallback: open web version if Instagram app not installed
   setTimeout(() => {
     window.open("https://instagram.com/", "_blank");
   }, 2000);
