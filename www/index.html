@@ -212,14 +212,6 @@
   <button id="pull-summary-btn-set" class="pull-summary-btn btn btn-primary w-full shadow-lg">
     📊 Pull Last 3 Days Summary
   </button>
-
-  <!-- 🔹 Summary Card (hidden by default) -->
-  <div id="summary-card" class="card hidden mt-4 relative">
-    <button id="close-summary" class="absolute top-2 right-2 text-gray-500 hover:text-red-600">❌</button>
-    <h2 class="text-lg font-bold text-gray-800 mb-2">Last 3 Days Usage</h2>
-    <canvas id="summary-chart" width="400" height="200"></canvas>
-  </div>
-
   <div class="space-y-4">
     <div>
       <label for="timeLimit" class="block text-sm font-medium text-gray-700">Time Limit (minutes)</label>
@@ -230,6 +222,14 @@
     </button>
   </div>
 </div>
+
+
+  <!-- 🔹 Summary Card (hidden by default) -->
+  <div id="summary-card" class="card hidden mt-4 relative">
+    <button id="close-summary" class="absolute top-2 right-2 text-gray-500 hover:text-red-600">❌</button>
+    <h2 class="text-lg font-bold text-gray-800 mb-2">Last 3 Days Usage</h2>
+    <canvas id="summary-chart" width="400" height="200"></canvas>
+  </div>
 
     <!-- 3. TRACKER CARD (When Session is Active) -->
     <div id="tracker-card" class="card space-y-6 text-center hidden">
@@ -277,11 +277,30 @@
 
   </div>
   
+  
+  <script type="module">
+  import { LocalNotifications } from '@capacitor/local-notifications';
+
+  // Ask for notification permission when app loads
+  async function requestNotifPermission() {
+    const result = await LocalNotifications.requestPermissions();
+    if (result.display === 'granted') {
+      console.log("✅ Notifications allowed");
+    } else {
+      console.log("❌ Notifications blocked");
+    }
+  }
+  requestNotifPermission();
+
+  // Expose globally so we can call inside normal <script>
+  window.LocalNotifications = LocalNotifications;
+ </script>
 
   <script>
   
    // Get base API URL (ngrok or localhost)
-  let API_BASE_URL = localStorage.getItem("API_BASE_URL");
+ // let API_BASE_URL = localStorage.getItem("API_BASE_URL");
+ const API_BASE_URL = "https://noscrollapplication.onrender.com";
 
   if (!API_BASE_URL) {
     // Default to localhost (when running on your PC)
@@ -592,7 +611,7 @@ function renderSummaryChart(data) {
       showPage('tracker-card');
       startTime = Date.now();
       const timeLimitInSeconds = timeLimitInMinutes * 60;
-      
+      window.notifScheduled = false; // 👈 add this line here to reset flag for new sessions
       timerInterval = setInterval(() => {
   if (!isPaused) {
     const elapsedTimeInSeconds = Math.floor((Date.now() - startTime) / 1000) - pausedSeconds;
@@ -604,9 +623,28 @@ function renderSummaryChart(data) {
       const minutes = Math.floor(remainingSeconds / 60);
       const seconds = remainingSeconds % 60;
       timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+      // 🔔 Trigger notification when 1 minute remains
+      if (remainingSeconds === 60 && !window.notifScheduled) {
+        window.notifScheduled = true; // only fire once
+        if (window.LocalNotifications) {
+          window.LocalNotifications.schedule({
+            notifications: [
+              {
+                title: "⏳ Almost done!",
+                body: "Your NoScroll session ends in 1 minute.",
+                id: 1,
+                schedule: { at: new Date(Date.now() + 1000) },
+                sound: "default",
+              },
+            ],
+          });
+        }
+      }
     }
   }
 }, 1000);
+
 	  // 🚀 Launch Instagram Native App
         openInstagram();
     });
@@ -759,35 +797,5 @@ function showAlert(message, type = 'success') {
   }
  });
 </script>
-
-<button id="settings-btn" 
-        style="position: fixed !important;
-               bottom: 20px; 
-               right: 20px;
-               background: #4f46e5; 
-               color: white; 
-               border: none;
-               padding: 14px 16px; 
-               border-radius: 50%;
-               font-size: 22px; 
-               line-height: 1;
-               box-shadow: 0 4px 10px rgba(0,0,0,0.4); 
-               cursor: pointer;
-               z-index: 999999999; /* always on top */
-               display: block;">
-  ⚙️
-</button>
 </body>
-
-<script>
-  document.getElementById("settings-btn").addEventListener("click", function () {
-    const current = localStorage.getItem("API_BASE_URL") || "http://localhost:8001";
-    const newUrl = prompt("Enter API Base URL:", current);
-    if (newUrl) {
-      localStorage.setItem("API_BASE_URL", newUrl);
-      alert("API URL saved! Reloading...");
-      location.reload();
-    }
-  });
-</script>
 </html>
