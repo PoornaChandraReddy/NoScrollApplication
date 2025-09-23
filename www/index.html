@@ -224,12 +224,16 @@
 </div>
 
 
-  <!-- 🔹 Summary Card (hidden by default) -->
-  <div id="summary-card" class="card hidden mt-4 relative">
-    <button id="close-summary" class="absolute top-2 right-2 text-gray-500 hover:text-red-600">❌</button>
+ 
+  <!-- 🔹 Summary Template (hidden, reusable) -->
+<template id="summary-template">
+  <div class="summary-card card mt-4 relative">
+    <button class="close-summary absolute top-2 right-2 text-gray-500 hover:text-red-600">❌</button>
     <h2 class="text-lg font-bold text-gray-800 mb-2">Last 3 Days Usage</h2>
-    <canvas id="summary-chart" width="400" height="200"></canvas>
+    <canvas class="summary-chart" width="400" height="200"></canvas>
   </div>
+</template>
+
 
     <!-- 3. TRACKER CARD (When Session is Active) -->
     <div id="tracker-card" class="card space-y-6 text-center hidden">
@@ -515,10 +519,26 @@ document.querySelectorAll('.pull-summary-btn').forEach(btn => {
       console.log("Summary API response:", result);
 
       if (res.ok && result.status === "success") {
-        const sfResp = result.salesforce_response; // ✅ Salesforce response inside
+        const sfResp = result.salesforce_response;
         if (sfResp && sfResp.status === "success" && sfResp.data && sfResp.data.length > 0) {
-          summaryCard.classList.remove('hidden');
-          renderSummaryChart(sfResp.data);
+          
+          // ✅ Clone template
+          const template = document.getElementById('summary-template');
+          const clone = template.content.cloneNode(true);
+          const summaryCard = clone.querySelector('.summary-card');
+          const chartCanvas = clone.querySelector('.summary-chart');
+          
+          // Insert after the button clicked
+          btn.insertAdjacentElement('afterend', summaryCard);
+
+          // Render chart inside the cloned canvas
+          renderSummaryChart(sfResp.data, chartCanvas);
+
+          // Close button
+          summaryCard.querySelector('.close-summary').addEventListener('click', () => {
+            summaryCard.remove();
+          });
+
         } else {
           showAlert("ℹ️ No summary data available.", "success");
         }
@@ -534,14 +554,16 @@ document.querySelectorAll('.pull-summary-btn').forEach(btn => {
   });
 });
 
+
 closeSummaryBtn.addEventListener('click', () => {
   summaryCard.classList.add('hidden');
 });
 
 // 🔹 Chart rendering
 let summaryChart;
-function renderSummaryChart(data) {
-  const ctx = document.getElementById('summary-chart').getContext('2d');
+function renderSummaryChart(data, canvasElement) {
+  // Use the canvasElement parameter instead of getting it by ID
+  const ctx = canvasElement.getContext('2d');
 
   const labels = data.map(d => d.date);
   const limits = data.map(d => d.timeLimit);
@@ -552,9 +574,13 @@ function renderSummaryChart(data) {
     s > limits[i] ? "rgba(239,68,68,0.9)" : "rgba(16,185,129,0.9)"
   );
 
-  if (summaryChart) summaryChart.destroy();
+  // Check if a chart already exists on this canvas and destroy it
+  if (canvasElement.chart) {
+    canvasElement.chart.destroy();
+  }
 
-  summaryChart = new Chart(ctx, {
+  // Create the new chart and store a reference to it on the canvas element
+  canvasElement.chart = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: labels,
@@ -591,9 +617,10 @@ function renderSummaryChart(data) {
   storyDiv.appendChild(summary);
 
   // Attach story under the chart
-  const summaryCard = document.getElementById("summary-card");
-  const oldStory = document.getElementById("usage-story");
-  if (oldStory) oldStory.remove(); // clear old story
+  // You need to find the parent container to append the story
+  const summaryCard = canvasElement.closest('.summary-card');
+  const oldStory = summaryCard.querySelector("#usage-story");
+  if (oldStory) oldStory.remove();
   storyDiv.id = "usage-story";
   summaryCard.appendChild(storyDiv);
 }
