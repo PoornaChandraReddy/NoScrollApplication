@@ -226,13 +226,13 @@
 
  
   <!-- 🔹 Summary Template (hidden, reusable) -->
-
+<template id="summary-template">
   <div class="summary-card card mt-4 relative">
     <button class="close-summary absolute top-2 right-2 text-gray-500 hover:text-red-600">❌</button>
     <h2 class="text-lg font-bold text-gray-800 mb-2">Last 3 Days Usage</h2>
     <canvas class="summary-chart" width="400" height="200"></canvas>
   </div>
-
+</template>
 
 
     <!-- 3. TRACKER CARD (When Session is Active) -->
@@ -516,18 +516,34 @@ document.querySelectorAll('.pull-summary-btn').forEach(btn => {
       });
 
       const result = await res.json();
-      if (res.ok && result.status === "success" && result.salesforce_response.data?.length) {
+      console.log("Summary API response:", result);
+
+      if (res.ok && result.status === "success") {
         const sfResp = result.salesforce_response;
+        if (sfResp && sfResp.status === "success" && sfResp.data && sfResp.data.length > 0) {
+          
+          // ✅ Clone template
+          const template = document.getElementById('summary-template');
+          const clone = template.content.cloneNode(true);
+          const summaryCard = clone.querySelector('.summary-card');
+          const chartCanvas = clone.querySelector('.summary-chart');
+          
+          // Insert after the button clicked
+          btn.insertAdjacentElement('afterend', summaryCard);
 
-        // ✅ Show the permanent summary section
-        const summaryCard = document.getElementById("summary-card");
-        summaryCard.classList.remove("hidden");
+          // Render chart inside the cloned canvas
+          renderSummaryChart(sfResp.data, chartCanvas);
 
-        // Render chart into permanent canvas
-        const chartCanvas = document.getElementById("summary-chart");
-        renderSummaryChart(sfResp.data, chartCanvas);
+          // Close button
+          summaryCard.querySelector('.close-summary').addEventListener('click', () => {
+            summaryCard.remove();
+          });
+
+        } else {
+          showAlert("ℹ️ No summary data available.", "success");
+        }
       } else {
-        showAlert("ℹ️ No summary data available.", "success");
+        showAlert("❌ Could not fetch summary", "error");
       }
     } catch (err) {
       console.error(err);
