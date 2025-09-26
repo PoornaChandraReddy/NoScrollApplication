@@ -284,7 +284,7 @@
   
   <script type="module">
   import { LocalNotifications } from '@capacitor/local-notifications';
-
+  import { AppLauncher } from '@capacitor/app-launcher';
   // Ask for notification permission when app loads
   async function requestNotifPermission() {
     const result = await LocalNotifications.requestPermissions();
@@ -298,6 +298,7 @@
 
   // Expose globally so we can call inside normal <script>
   window.LocalNotifications = LocalNotifications;
+  window.AppLauncher = AppLauncher;
  </script>
 
   <script>
@@ -466,21 +467,15 @@
 	
 	
 	// --- Instagram Launcher ---
-function openInstagram() {
-  const url = "instagram://app";
+async function openInstagram() {
+  const canOpen = await AppLauncher.canOpenUrl({ url: 'instagram://app' });
 
-  // Create a hidden link and simulate a click
-  const a = document.createElement("a");
-  a.href = url;
-  a.style.display = "none";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-
-  // Fallback after short delay
-  setTimeout(() => {
-    window.open("https://instagram.com/", "_blank");
-  }, 2000);
+  if (canOpen.value) {
+    await AppLauncher.openUrl({ url: 'instagram://app' });
+  } else {
+    // fallback → open in browser
+    window.open('https://instagram.com/', '_blank');
+  }
 }
    
     // --- Event Listeners ---
