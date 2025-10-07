@@ -468,14 +468,25 @@
 	
 	// --- Instagram Launcher ---
 async function openInstagram() {
-  const canOpen = await AppLauncher.canOpenUrl({ url: 'instagram://app' });
+    // 💡 Use a generic deep link that is better recognized by the system.
+    const instagramUrl = 'instagram://user?username=_'; 
+    const browserUrl = 'https://www.instagram.com/';
 
-  if (canOpen.value) {
-    await AppLauncher.openUrl({ url: 'instagram://app' });
-  } else {
-    // fallback → open in browser
-    window.open('https://instagram.com/', '_blank');
-  }
+    try {
+        const canOpen = await AppLauncher.canOpenUrl({ url: instagramUrl });
+
+        if (canOpen.value) {
+            // Success: Open the native app directly
+            await AppLauncher.openUrl({ url: instagramUrl });
+        } else {
+            // Fallback: The app is likely not installed, so open in browser
+            window.open(browserUrl, '_blank');
+        }
+    } catch (e) {
+        console.error("AppLauncher error, falling back to browser:", e);
+        // Fallback on any error during the AppLauncher process
+        window.open(browserUrl, '_blank'); 
+    }
 }
    
     // --- Event Listeners ---
@@ -668,7 +679,7 @@ function renderSummaryChart(data, canvasElement) {
 }, 1000);
 
 	  // 🚀 Launch Instagram Native App
-        openInstagram();
+         await openInstagram();
     });
     
     // End Session Button
