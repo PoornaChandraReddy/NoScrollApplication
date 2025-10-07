@@ -634,7 +634,7 @@ function renderSummaryChart(data, canvasElement) {
 
 
     // Start Session Button
-    startSessionBtn.addEventListener('click', () => {
+    startSessionBtn.addEventListener('click', async  () => {
       const timeLimitInMinutes = parseInt(timeLimitInput.value);
       if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
         showAlert('Please enter a valid time limit.', 'error');
@@ -679,7 +679,11 @@ function renderSummaryChart(data, canvasElement) {
 }, 1000);
 
 	  // 🚀 Launch Instagram Native App
-         await openInstagram();
+         try {
+    await openInstagram();
+  } catch (e) {
+    console.error("Error launching Instagram:", e);
+  }
     });
     
     // End Session Button
