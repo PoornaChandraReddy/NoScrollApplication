@@ -632,62 +632,57 @@ function renderSummaryChart(data, canvasElement) {
 }
 
 
-document.addEventListener('DOMContentLoaded', () => {
-const startSessionBtn = document.getElementById('start-session-btn');
-console.log('Start session listener attached');
-    // Start Session Button
-    startSessionBtn.addEventListener('click', async  () => {
-      const timeLimitInMinutes = parseInt(timeLimitInput.value);
-      if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
-        showAlert('Please enter a valid time limit.', 'error');
-        return;
+document.addEventListener('click', async (e) => {
+  if (e.target && e.target.id === 'start-session-btn') {
+    console.log("Start Session clicked");
+
+    const timeLimitInMinutes = parseInt(timeLimitInput.value);
+    if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
+      showAlert('Please enter a valid time limit.', 'error');
+      return;
+    }
+
+    showPage('tracker-card');
+    startTime = Date.now();
+    const timeLimitInSeconds = timeLimitInMinutes * 60;
+    window.notifScheduled = false;
+
+    timerInterval = setInterval(() => {
+      const elapsedTime = Math.floor((Date.now() - startTime)/1000);
+      const remaining = timeLimitInSeconds - elapsedTime;
+
+      const minutes = Math.floor(remaining/60);
+      const seconds = remaining % 60;
+      timerDisplay.textContent = `${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')}`;
+
+      if (remaining <= 0) {
+        endSession(true);
       }
-    
-      showPage('tracker-card');
-      startTime = Date.now();
-      const timeLimitInSeconds = timeLimitInMinutes * 60;
-      window.notifScheduled = false; // 👈 add this line here to reset flag for new sessions
-      timerInterval = setInterval(() => {
-  if (!isPaused) {
-    const elapsedTimeInSeconds = Math.floor((Date.now() - startTime) / 1000) - pausedSeconds;
 
-    if (elapsedTimeInSeconds >= timeLimitInSeconds) {
-      endSession(true);
-    } else {
-      const remainingSeconds = timeLimitInSeconds - elapsedTimeInSeconds;
-      const minutes = Math.floor(remainingSeconds / 60);
-      const seconds = remainingSeconds % 60;
-      timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-
-      // 🔔 Trigger notification when 1 minute remains
-      if (remainingSeconds === 60 && !window.notifScheduled) {
-        window.notifScheduled = true; // only fire once
+      if (remaining === 60 && !window.notifScheduled) {
+        window.notifScheduled = true;
         if (window.LocalNotifications) {
           window.LocalNotifications.schedule({
-            notifications: [
-              {
-                title: "⏳ Almost done!",
-                body: "Your NoScroll session ends in 1 minute.",
-                id: 1,
-                schedule: { at: new Date(Date.now() + 1000) },
-                sound: "default",
-              },
-            ],
+            notifications: [{
+              title: "⏳ Almost done!",
+              body: "Your session ends in 1 minute.",
+              id: 1,
+              schedule: { at: new Date(Date.now() + 1000) },
+              sound: "default",
+            }]
           });
         }
       }
+    }, 1000);
+
+    try {
+      await openInstagram();
+    } catch(e) {
+      console.error("Instagram launch failed:", e);
     }
   }
-}, 1000);
+});
 
-	  // 🚀 Launch Instagram Native App
-         try {
-    await openInstagram();
-  } catch (e) {
-    console.error("Error launching Instagram:", e);
-  }
-    });
-   });
  
     // End Session Button
     endSessionBtn.addEventListener('click', () => {
