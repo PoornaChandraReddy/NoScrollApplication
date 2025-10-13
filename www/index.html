@@ -342,9 +342,9 @@
     const userTypeRadios = document.getElementsByName('userType');
     const parentFieldsDiv = document.getElementById('parent-fields');
 
-    const timeLimitInput = document.getElementById('timeLimit');
+   // const timeLimitInput = document.getElementById('timeLimit');
    // const startSessionBtn = document.getElementById('start-session-btn');
-    const timerDisplay = document.getElementById('timer-display');
+    //const timerDisplay = document.getElementById('timer-display');
     const endSessionBtn = document.getElementById('end-session-btn');
 
     let startTime;
@@ -634,43 +634,49 @@ function renderSummaryChart(data, canvasElement) {
 }
 
 
-document.addEventListener('click', async (e) => {
+document.addEventListener('DOMContentLoaded', () => {
   const startBtn = document.getElementById('start-session-btn');
-    console.log("Start Session clicked");
+  const timeLimitInput = document.getElementById('timeLimit');
+  const timerDisplay = document.getElementById('timer-display'); // Make sure id matches your DOM
 
-    if (!startBtn) {
-    console.error("Start button not found in DOM");
+  if (!startBtn) {
+    console.error("Start button not found.");
     return;
   }
-  
+
   startBtn.addEventListener('click', async () => {
-    console.log("✅ Start Session clicked");
+    console.log("Start Session clicked");
 
     const timeLimitInMinutes = parseInt(timeLimitInput.value);
     if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
-      showAlert('Please enter a valid time limit.', 'error');
+      alert('Please enter a valid time limit.');
       return;
     }
 
+    // Your timer and notification scheduling logic here
+    // For example:
     showPage('tracker-card');
-    startTime = Date.now();
+    let startTime = Date.now();
     const timeLimitInSeconds = timeLimitInMinutes * 60;
-    window.notifScheduled = false;
+    let notifScheduled = false;
 
-    timerInterval = setInterval(() => {
-      const elapsedTime = Math.floor((Date.now() - startTime)/1000);
+    const timerInterval = setInterval(() => {
+      const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
       const remaining = timeLimitInSeconds - elapsedTime;
 
-      const minutes = Math.floor(remaining/60);
+      const minutes = Math.floor(remaining / 60);
       const seconds = remaining % 60;
-      timerDisplay.textContent = `${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')}`;
+      if(timerDisplay) {
+        timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      }
 
       if (remaining <= 0) {
+        clearInterval(timerInterval);
         endSession(true);
       }
 
-      if (remaining === 60 && !window.notifScheduled) {
-        window.notifScheduled = true;
+      if (remaining === 60 && !notifScheduled) {
+        notifScheduled = true;
         if (window.LocalNotifications) {
           window.LocalNotifications.schedule({
             notifications: [{
@@ -687,11 +693,12 @@ document.addEventListener('click', async (e) => {
 
     try {
       await openInstagram();
-    } catch(e) {
+    } catch (e) {
       console.error("Instagram launch failed:", e);
     }
-  
+  });
 });
+
 
  
     // End Session Button
