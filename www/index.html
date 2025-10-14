@@ -626,6 +626,9 @@
       }
 
       showPage('tracker-card');
+	  
+	  // ✅ Reset pause tracking for new session
+  pausedSeconds = 0;
       
       // Use/Set global variables
       startTime = Date.now();
@@ -636,38 +639,43 @@
       clearInterval(timerInterval); 
       
       timerInterval = setInterval(() => {
-        const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
-        const remaining = timeLimitInSeconds - elapsedTime;
 
-        const minutes = Math.floor(remaining / 60);
-        const seconds = remaining % 60;
-        
-        // Use global timerDisplay
-        if(timerDisplay) {
-          timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-        }
+  // ✅ Run timer only if NOT paused
+  if (!isPaused) {
 
-        if (remaining <= 0) {
-          clearInterval(timerInterval);
-          endSession(true);
-        }
+    const elapsedTime = Math.floor((Date.now() - startTime) / 1000) + pausedSeconds;
+    const remaining = timeLimitInSeconds - elapsedTime;
 
-        if (remaining === 60 && !notifScheduled) {
-          notifScheduled = true;
-          if (window.LocalNotifications) {
-            window.LocalNotifications.schedule({
-              notifications: [{
-                title: "⏳ Almost done!",
-                body: "Your session ends in 1 minute.",
-                id: 1,
-                // Note: schedule time is 1000ms from now, ensure this matches your intent
-                schedule: { at: new Date(Date.now() + 1000) }, 
-                sound: "default",
-              }]
-            });
-          }
-        }
-      }, 1000);
+    const minutes = Math.floor(remaining / 60);
+    const seconds = remaining % 60;
+
+    if (timerDisplay) {
+      timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+
+    if (remaining <= 0) {
+      clearInterval(timerInterval);
+      endSession(true);
+    }
+
+    if (remaining === 60 && !notifScheduled) {
+      notifScheduled = true;
+      if (window.LocalNotifications) {
+        window.LocalNotifications.schedule({
+          notifications: [{
+            title: "⏳ Almost done!",
+            body: "Your session ends in 1 minute.",
+            id: 1,
+            schedule: { at: new Date(Date.now() + 1000) },
+            sound: "default",
+          }]
+        });
+      }
+    }
+  }
+
+}, 1000);
+
 
       try {
         await openInstagram();
@@ -733,7 +741,7 @@
       });
     });
 
-    // --- App State Change: Pause/Resume Tracker ---
+
 
 // --- App State Change: Pause/Resume Tracker ---
 let isPaused = false;
