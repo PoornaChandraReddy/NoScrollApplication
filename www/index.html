@@ -658,20 +658,23 @@
       endSession(true);
     }
 
-    if (remaining === 60 && !notifScheduled) {
-      notifScheduled = true;
-      if (window.LocalNotifications) {
-        window.LocalNotifications.schedule({
-          notifications: [{
-            title: "⏳ Almost done!",
-            body: "Your session ends in 1 minute.",
-            id: 1,
-            schedule: { at: new Date(Date.now() + 1000) },
-            sound: "default",
-          }]
-        });
-      }
-    }
+    // ✅ Safer 1-minute warning notification
+if (remaining <= 60 && remaining > 0 && !notifScheduled) {
+  notifScheduled = true;
+
+  if (window.LocalNotifications) {
+    window.LocalNotifications.schedule({
+      notifications: [{
+        id: 1,
+        title: "⏳ Time almost up!",
+        body: "Only 1 minute left in your NoScroll session!",
+        schedule: { at: new Date(Date.now() + 10) }, // fire immediately
+        sound: "default",
+      }]
+    });
+  }
+}
+
   }
 
 }, 1000);
