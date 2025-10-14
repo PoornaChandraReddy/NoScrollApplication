@@ -735,29 +735,29 @@
 
     // --- App State Change: Pause/Resume Tracker ---
     let isPaused = false;
-    let pauseStart = null;
-    let pausedSeconds = 0;
+let pauseStart = null;
+let pausedSeconds = 0;
 
-    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
-      const { App } = window.Capacitor.Plugins;
+if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+  const { App } = window.Capacitor.Plugins;
 
-      App.addListener('appStateChange', ({ isActive }) => {
-        if (isActive) {
-          // NoScroll is foreground → pause timer
-          isPaused = true;
-          pauseStart = Date.now();
-          document.getElementById('tracker-status').textContent = "⏸️ Session paused. Instagram not in use.";
-        } else {
-          // NoScroll is background → resume timer
-          if (pauseStart) {
-            pausedSeconds += Math.floor((Date.now() - pauseStart) / 1000);
-            pauseStart = null;
-          }
-          isPaused = false;
-          document.getElementById('tracker-status').textContent = "▶️ Session active. Instagram";
-        }
-      });
+  App.addListener('appStateChange', ({ isActive }) => {
+    if (isActive) {
+      // App is foregrounded, resume timer
+      if (pauseStart) {
+        pausedSeconds += Math.floor((Date.now() - pauseStart) / 1000); // Add pause duration
+        pauseStart = null;
+      }
+      isPaused = false;
+      document.getElementById('tracker-status').textContent = "▶️ Session active. Instagram not in use.";
+    } else {
+      // App goes to background, start pause timer
+      isPaused = true;
+      pauseStart = Date.now();
+      document.getElementById('tracker-status').textContent = "⏸️ Session paused. Instagram in use.";
     }
+  });
+}
 
 </script>
 </body>
