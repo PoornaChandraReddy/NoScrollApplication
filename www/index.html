@@ -615,6 +615,25 @@
         }
       });
     });
+	
+	
+	// Helper function to schedule the notification
+async function scheduleOneMinuteWarning() {
+    try {
+        await window.LocalNotifications.schedule({
+            notifications: [{
+                id: 1,
+                title: "⏳ Time almost up!",
+                body: "Only 1 minute left in your NoScroll session!",
+                schedule: { at: new Date(Date.now() + 5000) }, // ✅ Use 5s delay for better testing (see note below)
+                sound: "default",
+            }]
+        });
+        console.log("✅ 1-minute warning successfully scheduled!");
+    } catch (e) {
+        console.error("❌ Failed to schedule notification:", e);
+    }
+}
 
     
     // 🚀 START SESSION BUTTON LISTENER (CRITICAL FIX: MOVED OUT OF SHOWPAGE)
@@ -663,16 +682,10 @@ if (remaining <= 60 && remaining > 0 && !notifScheduled) {
   notifScheduled = true;
 
   if (window.LocalNotifications) {
-    window.LocalNotifications.schedule({
-      notifications: [{
-        id: 1,
-        title: "⏳ Time almost up!",
-        body: "Only 1 minute left in your NoScroll session!",
-        schedule: { at: new Date(Date.now() + 10) }, // fire immediately
-        sound: "default",
-      }]
-    });
-  }
+        scheduleOneMinuteWarning(); // <-- Call the async function
+    } else {
+        console.warn("⚠️ LocalNotifications object is missing.");
+    }
 }
 
   }
