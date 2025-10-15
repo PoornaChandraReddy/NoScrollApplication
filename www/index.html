@@ -207,7 +207,17 @@
       <button id="pull-summary-btn-set" class="pull-summary-btn btn btn-primary w-full shadow-lg">
         📊 Pull Last 3 Days Summary
       </button>
-      <div class="space-y-4">
+	  <div class="space-y-4">
+    <div>
+      <label for="socialApp" class="block text-sm font-medium text-gray-700">Select App</label>
+      <select id="socialApp" name="socialApp" class="form-select w-full">
+        <option value="Instagram" selected>Instagram</option>
+        <option value="Facebook">Facebook</option>
+        <option value="YouTube">YouTube</option>
+      </select>
+    </div>
+	  
+      
         <div>
           <label for="timeLimit" class="block text-sm font-medium text-gray-700">Time Limit (minutes)</label>
           <input type="number" id="timeLimit" name="timeLimit" class="form-input" value="60" min="1" required />
@@ -386,7 +396,7 @@
       const payload = {
         action: "log_and_set_time",
         customerId: customerId,
-        socialMediaApp: "TikTok", // Assuming the app name is static for simplicity
+        socialMediaApp: localStorage.getItem('selectedApp'), // Assuming the app name is static for simplicity
         timeLimit: timeLimit,
         timeSpent: timeSpentInSeconds,
         usageDate: new Date().toISOString().split('T')[0] // 'YYYY-MM-DD'
@@ -436,23 +446,29 @@
     }
 	
 	// --- Instagram Launcher ---
-    async function openInstagram() {
-      const instagramUrl = 'instagram://user?username=_'; 
-      const browserUrl = 'https://www.instagram.com/';
+    async function openApp(appName) {
+  // URLs for app + browser fallback
+  const APP_URLS = {
+    Instagram: { app: 'instagram://user?username=_', web: 'https://www.instagram.com/' },
+    Facebook:  { app: 'fb://', web: 'https://www.facebook.com/' },
+    YouTube:   { app: 'youtube://', web: 'https://www.youtube.com/' }
+  };
 
-      try {
-          const canOpen = await window.AppLauncher.canOpenUrl({ url: instagramUrl });
+  const urls = APP_URLS[appName] || APP_URLS["Instagram"];
 
-          if (canOpen.value) {
-              await window.AppLauncher.openUrl({ url: instagramUrl });
-          } else {
-              window.open(browserUrl, '_blank');
-          }
-      } catch (e) {
-          console.error("AppLauncher error, falling back to browser:", e);
-          window.open(browserUrl, '_blank'); 
-      }
+  try {
+    const canOpen = await window.AppLauncher.canOpenUrl({ url: urls.app });
+
+    if (canOpen.value) {
+      await window.AppLauncher.openUrl({ url: urls.app });
+    } else {
+      window.open(urls.web, '_blank');
     }
+  } catch (e) {
+    console.error(`${appName} AppLauncher error, falling back to browser:`, e);
+    window.open(urls.web, '_blank');
+  }
+}
    
     // 🔹 Chart rendering
     let summaryChart;
@@ -652,10 +668,16 @@ async function scheduleOneMinuteWarning() {
     }
 }
 
-    
+   let currentSelectedApp = null;
+ 
     // 🚀 START SESSION BUTTON LISTENER (CRITICAL FIX: MOVED OUT OF SHOWPAGE)
     startSessionBtn.addEventListener('click', async () => {
       const timeLimitInMinutes = parseInt(timeLimitInput.value);
+	  const selectedApp = socialAppSelect.value; // Instagram / Facebook / YouTube
+	  localStorage.setItem('selectedApp', selectedApp); // optional persistence
+      currentSelectedApp = selectedApp; // <-- store for this session
+	  
+	  console.log("selected APP",currentSelectedApp);
       if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
         alert('Please enter a valid time limit.');
         return;
@@ -711,7 +733,7 @@ if (remaining <= 60 && remaining > 0 && !notifScheduled) {
 
 
       try {
-        await openInstagram();
+        await openApp(selectedApp);
       } catch (e) {
         console.error("Instagram launch failed:", e);
       }
