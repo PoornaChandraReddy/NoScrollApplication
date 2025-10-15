@@ -163,10 +163,10 @@
           <label for="email" class="block text-sm font-medium text-gray-700">Your Email</label>
           <input type="email" id="email" name="email" class="form-input" required />
         </div>
-        <div>
+        <!--<div>
           <label for="socialMediaApp" class="block text-sm font-medium text-gray-700">Social Media App</label>
           <input type="text" id="socialMediaApp" name="socialMediaApp" class="form-input" placeholder="e.g., TikTok" required />
-        </div>
+        </div>-->
         <div class="flex items-center space-x-6">
           <label class="flex items-center">
             <input type="radio" name="userType" value="Parent" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded-full" />
@@ -611,7 +611,7 @@
           email: formData.get("email"),
           age: parseInt(formData.get("age")),
           userType: formData.get("userType"),
-          socialMediaApp: formData.get("socialMediaApp"),
+          
         };
 
         if (payload.userType === "Parent") {
