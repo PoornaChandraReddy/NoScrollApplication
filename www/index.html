@@ -282,11 +282,15 @@
   
   // ✅ Create notification channel (Android requirement)
   LocalNotifications.createChannel({
-    id: "default",
-    name: "General Notifications",
-    description: "NoScroll reminder alerts",
-    importance: 5 // ✅ High priority so it actually shows
-  });
+  id: "alarm", // use a new channel ID to avoid cached settings
+  name: "Alarm Notifications",
+  description: "Notifications that appear as heads-up alerts",
+  importance: 5, // HIGH priority
+  sound: "alarm",
+  vibration: true,
+  visibility: "public",
+  lights: true
+});
 
 
   // ✅ Ask permission only AFTER plugin is available
@@ -637,6 +641,9 @@ async function scheduleOneMinuteWarning() {
                 body: "Only 1 minute left in your NoScroll session!",
                 schedule: { at: new Date(Date.now() + 5000) }, // ✅ Use 5s delay for better testing (see note below)
                 sound: "default",
+				channelId: "alarm", // match the new channel
+                sound: "alarm",
+                vibrate: true
             }]
         });
         console.log("✅ 1-minute warning successfully scheduled!");
