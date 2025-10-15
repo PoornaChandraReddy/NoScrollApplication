@@ -188,7 +188,8 @@ class NoScrollProxy(BaseHTTPRequestHandler):
                         "action": "log_and_set_time",
                         "customerId": request_data.get("customerId"),
                         "timeSpent": request_data.get("timeSpent"),
-                        "timeLimit": request_data.get("timeLimit")
+                        "timeLimit": request_data.get("timeLimit"),
+                        "socialMediaApp": request_data.get("socialMediaApp")
                     }
                     salesforce_response = call_salesforce_api(payload)
                     
@@ -253,3 +254,4 @@ def run(server_class=HTTPServer, handler_class=NoScrollProxy, port=8001):
 
 if __name__ == '__main__':
     run()
+
