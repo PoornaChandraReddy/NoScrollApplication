@@ -272,10 +272,24 @@
   
   
   <script type="module">
-  import { LocalNotifications } from '@capacitor/local-notifications';
   import { AppLauncher } from '@capacitor/app-launcher';
+  window.AppLauncher = AppLauncher;
+</script>
+
+<script>
+  const { LocalNotifications } = Capacitor.Plugins;
+  window.LocalNotifications = LocalNotifications;
   
-  // Ask for notification permission when app loads
+  // ✅ Create notification channel (Android requirement)
+  LocalNotifications.createChannel({
+    id: "default",
+    name: "General Notifications",
+    description: "NoScroll reminder alerts",
+    importance: 5 // ✅ High priority so it actually shows
+  });
+
+
+  // ✅ Ask permission only AFTER plugin is available
   async function requestNotifPermission() {
     const result = await LocalNotifications.requestPermissions();
     if (result.display === 'granted') {
@@ -285,11 +299,7 @@
     }
   }
   requestNotifPermission();
-
-  // Expose globally so we can call inside normal <script>
-  window.LocalNotifications = LocalNotifications;
-  window.AppLauncher = AppLauncher;
- </script>
+</script>
 
   <script>
   
