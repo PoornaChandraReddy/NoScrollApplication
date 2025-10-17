@@ -814,7 +814,7 @@ if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App
       // ✅ App is foregrounded → PAUSE the timer
       isPaused = true;
       pauseStart = Date.now();
-      document.getElementById('tracker-status').textContent = "⏸️ Session paused because app is active.";
+      document.getElementById('tracker-status').textContent = `⏸️ Session is paused for ${currentSelectedApp}.`; // Correct with backticks
     } else {
       // ✅ App is backgrounded → RESUME the timer
       if (pauseStart) {
