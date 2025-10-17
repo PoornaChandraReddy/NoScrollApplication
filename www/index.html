@@ -246,7 +246,7 @@
         <p class="text-lg text-gray-500">Time Spent:</p>
       </div>
       <div class="text-7xl font-extrabold text-blue-600" id="timer-display">00:00</div>
-      <p id="tracker-status" class="text-sm text-gray-500">Session is active. Don't scroll!</p>
+      <p id="tracker-status" class="text-sm text-gray-500">Session is active for<span id="selected-app-name"></span>.</p>
       <button id="end-session-btn" class="btn btn-danger w-full shadow-lg">
         End Session
       </button>
@@ -679,6 +679,8 @@ async function scheduleOneMinuteWarning() {
       currentSelectedApp = selectedApp; // <-- store for this session
 	  
 	  console.log("selected APP",currentSelectedApp);
+	  // ✅ Show selected app in session tracker
+  document.getElementById('selected-app-name').textContent = selectedApp;
       if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
         alert('Please enter a valid time limit.');
         return;
