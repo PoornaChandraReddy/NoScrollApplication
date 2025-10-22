@@ -292,9 +292,9 @@
 <script>
   // Wait until DOM is loaded
   document.addEventListener('DOMContentLoaded', async () => {
-    console.log("DOM loaded — waiting for Capacitor App plugin...");
+    console.log("DOM loaded — initializing plugins...");
 
-    // Access LocalNotifications safely after Capacitor is available
+    // Access LocalNotifications safely
     const { LocalNotifications } = Capacitor.Plugins || {};
     if (!LocalNotifications) {
       console.warn("⚠️ LocalNotifications not ready yet, retrying...");
@@ -302,7 +302,7 @@
     }
     window.LocalNotifications = LocalNotifications;
 
-    // ✅ Create notification channel (Android)
+    // ✅ Create notification channel
     try {
       await LocalNotifications.createChannel({
         id: "alarm",
@@ -319,7 +319,7 @@
       console.warn("⚠️ Failed to create channel:", e);
     }
 
-    // ✅ Request permission *after* plugin is ready
+    // ✅ Request permission
     try {
       const result = await LocalNotifications.requestPermissions();
       if (result.display === 'granted') {
@@ -331,24 +331,16 @@
       console.warn("⚠️ Permission request failed:", e);
     }
 
-    // ✅ Wait for Capacitor App to become active
-    await new Promise(res => {
-      if (window.App) {
-        const listener = App.addListener('appStateChange', (state) => {
-          if (state.isActive) {
-            console.log("✅ Capacitor App active, plugins ready.");
-            listener.remove(); // remove after first trigger
-            res();
-          }
-        });
-      } else {
-        res(); // fallback if App plugin missing
-      }
-    });
-
-    // ✅ Now attach your Start Session handler safely
+    // ✅ Attach Start Session button immediately
     startSessionBtn.addEventListener('click', startSessionHandler);
     console.log("✅ Start Session button listener attached");
+
+    // Optional: listen for app state changes
+    if (window.App) {
+      App.addListener('appStateChange', (state) => {
+        console.log("App state changed:", state.isActive);
+      });
+    }
   });
 </script>
 
