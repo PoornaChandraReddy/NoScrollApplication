@@ -290,50 +290,63 @@
 
 <!-- ✅ MAIN SCRIPT -->
 <script>
+  // Ensure startSessionBtn is defined before use (e.g., const startSessionBtn = document.getElementById('startSessionBtn');)
+
   // Wait until DOM is loaded
   document.addEventListener('DOMContentLoaded', async () => {
     console.log("DOM loaded — initializing plugins...");
 
-    // Access LocalNotifications safely
+    // 1. ✅ ATTACH BUTTON LISTENER UNCONDITIONALLY (CRITICAL FIX)
+    // Find your button (assuming its ID is 'startSessionBtn')
+    const startSessionBtn = document.getElementById('startSessionBtn'); 
+    
+    if (startSessionBtn) {
+      startSessionBtn.addEventListener('click', startSessionHandler);
+      console.log("✅ Start Session button listener attached");
+    } else {
+      console.error("❌ startSessionBtn element not found!");
+    }
+
+    // 2. ⚠️ CHECK AND INITIALIZE LOCAL NOTIFICATIONS (Allow script to continue if not ready)
     const { LocalNotifications } = Capacitor.Plugins || {};
+    window.LocalNotifications = LocalNotifications; // Assign to window for use in startSessionHandler
+
     if (!LocalNotifications) {
-      console.warn("⚠️ LocalNotifications not ready yet, retrying...");
-      return;
-    }
-    window.LocalNotifications = LocalNotifications;
+      console.warn("⚠️ LocalNotifications not ready yet. Notification features will be disabled.");
+      // DO NOT return here, let the script continue to the App.addListener part.
+    } else {
+        // --- ONLY PROCEED WITH NOTIFICATION SETUP IF THE PLUGIN IS READY ---
+        
+        // ✅ Create notification channel
+        try {
+          await LocalNotifications.createChannel({
+            id: "alarm",
+            name: "Alarm Notifications",
+            description: "Notifications that appear as heads-up alerts",
+            importance: 5,
+            sound: "alarm",
+            vibration: true,
+            visibility: "public",
+            lights: true
+          });
+          console.log("✅ Notification channel created");
+        } catch (e) {
+          console.warn("⚠️ Failed to create channel:", e);
+        }
 
-    // ✅ Create notification channel
-    try {
-      await LocalNotifications.createChannel({
-        id: "alarm",
-        name: "Alarm Notifications",
-        description: "Notifications that appear as heads-up alerts",
-        importance: 5,
-        sound: "alarm",
-        vibration: true,
-        visibility: "public",
-        lights: true
-      });
-      console.log("✅ Notification channel created");
-    } catch (e) {
-      console.warn("⚠️ Failed to create channel:", e);
+        // ✅ Request permission
+        try {
+          const result = await LocalNotifications.requestPermissions();
+          if (result.display === 'granted') {
+            console.log("✅ Notifications allowed");
+          } else {
+            console.log("❌ Notifications blocked");
+          }
+        } catch (e) {
+          console.warn("⚠️ Permission request failed:", e);
+        }
     }
 
-    // ✅ Request permission
-    try {
-      const result = await LocalNotifications.requestPermissions();
-      if (result.display === 'granted') {
-        console.log("✅ Notifications allowed");
-      } else {
-        console.log("❌ Notifications blocked");
-      }
-    } catch (e) {
-      console.warn("⚠️ Permission request failed:", e);
-    }
-
-    // ✅ Attach Start Session button immediately
-    startSessionBtn.addEventListener('click', startSessionHandler);
-    console.log("✅ Start Session button listener attached");
 
     // Optional: listen for app state changes
     if (window.App) {
