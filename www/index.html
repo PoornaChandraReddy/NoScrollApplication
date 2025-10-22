@@ -286,33 +286,58 @@
   window.AppLauncher = AppLauncher;
 </script>
 
+<!-- ✅ MAIN SCRIPT -->
 <script>
-  const { LocalNotifications } = Capacitor.Plugins;
-  window.LocalNotifications = LocalNotifications;
-  
-  // ✅ Create notification channel (Android requirement)
-  LocalNotifications.createChannel({
-  id: "alarm", // use a new channel ID to avoid cached settings
-  name: "Alarm Notifications",
-  description: "Notifications that appear as heads-up alerts",
-  importance: 5, // HIGH priority
-  sound: "alarm",
-  vibration: true,
-  visibility: "public",
-  lights: true
-});
+  // Wait until the DOM and Capacitor are both ready
+  document.addEventListener('DOMContentLoaded', async () => {
+    console.log("🚀 DOM loaded — waiting for Capacitor bridge...");
 
+    // Small delay helps ensure the native bridge is ready (first launch)
+    await new Promise(res => setTimeout(res, 500));
 
-  // ✅ Ask permission only AFTER plugin is available
-  async function requestNotifPermission() {
-    const result = await LocalNotifications.requestPermissions();
-    if (result.display === 'granted') {
-      console.log("✅ Notifications allowed");
-    } else {
-      console.log("❌ Notifications blocked");
+    // Access LocalNotifications safely after Capacitor is available
+    const { LocalNotifications } = Capacitor.Plugins || {};
+    if (!LocalNotifications) {
+      console.warn("⚠️ LocalNotifications not ready yet, retrying...");
+      return;
     }
-  }
-  requestNotifPermission();
+
+    window.LocalNotifications = LocalNotifications;
+
+    // ✅ Create notification channel (Android)
+    try {
+      await LocalNotifications.createChannel({
+        id: "alarm",
+        name: "Alarm Notifications",
+        description: "Notifications that appear as heads-up alerts",
+        importance: 5,
+        sound: "alarm",
+        vibration: true,
+        visibility: "public",
+        lights: true
+      });
+      console.log("✅ Notification channel created");
+    } catch (e) {
+      console.warn("⚠️ Failed to create channel:", e);
+    }
+
+    // ✅ Request permission *after* plugin is ready
+    try {
+      const result = await LocalNotifications.requestPermissions();
+      if (result.display === 'granted') {
+        console.log("✅ Notifications allowed");
+      } else {
+        console.log("❌ Notifications blocked");
+      }
+    } catch (e) {
+      console.warn("⚠️ Permission request failed:", e);
+    }
+
+    console.log("✅ Plugins initialized, ready to bind event listeners.");
+
+    // ✅ Now attach your Start Session handler safely
+    startSessionBtn.addEventListener('click', startSessionHandler);
+  });
 </script>
 
   <script>
@@ -672,75 +697,58 @@ async function scheduleOneMinuteWarning() {
    let currentSelectedApp = null;
  
     // 🚀 START SESSION BUTTON LISTENER (CRITICAL FIX: MOVED OUT OF SHOWPAGE)
-    startSessionBtn.addEventListener('click', async () => {
-      const timeLimitInMinutes = parseInt(timeLimitInput.value);
-	  const selectedApp = socialAppSelect.value; // Instagram / Facebook / YouTube
-	  localStorage.setItem('selectedApp', selectedApp); // optional persistence
-      currentSelectedApp = selectedApp; // <-- store for this session
-	  
-	  console.log("selected APP",currentSelectedApp);
-	  // ✅ Show selected app in session tracker
+    async function startSessionHandler() {
+  const timeLimitInMinutes = parseInt(timeLimitInput.value);
+  const selectedApp = socialAppSelect.value;
+  localStorage.setItem('selectedApp', selectedApp);
+  currentSelectedApp = selectedApp;
+  console.log("selected APP", currentSelectedApp);
+
   document.getElementById('selected-app-name').textContent = selectedApp;
-      if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
-        alert('Please enter a valid time limit.');
-        return;
-      }
-
-      showPage('tracker-card');
-	  
-	  // ✅ Reset pause tracking for new session
-  pausedSeconds = 0;
-      
-      // Use/Set global variables
-      startTime = Date.now();
-      const timeLimitInSeconds = timeLimitInMinutes * 60;
-      let notifScheduled = false;
-
-      // Clear any previous interval before starting a new one
-      clearInterval(timerInterval); 
-      
-      timerInterval = setInterval(() => {
-
-  // ✅ Run timer only if NOT paused
-  if (!isPaused) {
-
-    const elapsedTime = Math.floor((Date.now() - startTime) / 1000) + pausedSeconds;
-    const remaining = timeLimitInSeconds - elapsedTime;
-
-    const minutes = Math.floor(remaining / 60);
-    const seconds = remaining % 60;
-
-    if (timerDisplay) {
-      timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    }
-
-    if (remaining <= 0) {
-      clearInterval(timerInterval);
-      endSession(true);
-    }
-
-    // ✅ Safer 1-minute warning notification
-if (remaining <= 60 && remaining > 0 && !notifScheduled) {
-  notifScheduled = true;
-
-  if (window.LocalNotifications) {
-        scheduleOneMinuteWarning(); // <-- Call the async function
-    } else {
-        console.warn("⚠️ LocalNotifications object is missing.");
-    }
-}
-
+  if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
+    alert('Please enter a valid time limit.');
+    return;
   }
 
-}, 1000);
+  showPage('tracker-card');
+  pausedSeconds = 0;
+  startTime = Date.now();
+  const timeLimitInSeconds = timeLimitInMinutes * 60;
+  let notifScheduled = false;
+  clearInterval(timerInterval);
 
+  timerInterval = setInterval(() => {
+    if (!isPaused) {
+      const elapsedTime = Math.floor((Date.now() - startTime) / 1000) + pausedSeconds;
+      const remaining = timeLimitInSeconds - elapsedTime;
+      const minutes = Math.floor(remaining / 60);
+      const seconds = remaining % 60;
 
-      try {
-        await openApp(selectedApp);
-      } catch (e) {
-        console.error("Instagram launch failed:", e);
+      timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+      if (remaining <= 0) {
+        clearInterval(timerInterval);
+        endSession(true);
       }
-    });
+
+      if (remaining <= 60 && remaining > 0 && !notifScheduled) {
+        notifScheduled = true;
+        if (window.LocalNotifications) {
+          scheduleOneMinuteWarning();
+        } else {
+          console.warn("⚠️ LocalNotifications object is missing.");
+        }
+      }
+    }
+  }, 1000);
+
+  try {
+    await openApp(selectedApp);
+  } catch (e) {
+    console.error(`${selectedApp} launch failed:`, e);
+  }
+}
+
 
 
     // End Session Button
