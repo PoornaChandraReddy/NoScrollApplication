@@ -283,17 +283,16 @@
   
   <script type="module">
   import { AppLauncher } from '@capacitor/app-launcher';
+  import { App } from '@capacitor/app'; 
   window.AppLauncher = AppLauncher;
+  window.App = App;
 </script>
 
 <!-- ✅ MAIN SCRIPT -->
 <script>
-  // Wait until the DOM and Capacitor are both ready
+  // Wait until DOM is loaded
   document.addEventListener('DOMContentLoaded', async () => {
-    console.log("🚀 DOM loaded — waiting for Capacitor bridge...");
-
-    // Small delay helps ensure the native bridge is ready (first launch)
-    await new Promise(res => setTimeout(res, 500));
+    console.log("DOM loaded — waiting for Capacitor App plugin...");
 
     // Access LocalNotifications safely after Capacitor is available
     const { LocalNotifications } = Capacitor.Plugins || {};
@@ -301,7 +300,6 @@
       console.warn("⚠️ LocalNotifications not ready yet, retrying...");
       return;
     }
-
     window.LocalNotifications = LocalNotifications;
 
     // ✅ Create notification channel (Android)
@@ -333,12 +331,27 @@
       console.warn("⚠️ Permission request failed:", e);
     }
 
-    console.log("✅ Plugins initialized, ready to bind event listeners.");
+    // ✅ Wait for Capacitor App to become active
+    await new Promise(res => {
+      if (window.App) {
+        const listener = App.addListener('appStateChange', (state) => {
+          if (state.isActive) {
+            console.log("✅ Capacitor App active, plugins ready.");
+            listener.remove(); // remove after first trigger
+            res();
+          }
+        });
+      } else {
+        res(); // fallback if App plugin missing
+      }
+    });
 
     // ✅ Now attach your Start Session handler safely
     startSessionBtn.addEventListener('click', startSessionHandler);
+    console.log("✅ Start Session button listener attached");
   });
 </script>
+
 
   <script>
   
