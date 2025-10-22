@@ -290,24 +290,21 @@
 
 <!-- ✅ MAIN SCRIPT -->
 <script>
-  // Wait until DOM is loaded
-  document.addEventListener('DOMContentLoaded', async () => {
-    console.log("DOM loaded — initializing plugins...");
-	
-	const startSessionBtn = document.getElementById('startSessionBtn');
-	
-	if (startSessionBtn) {
-      startSessionBtn.addEventListener('click', startSessionHandler);
-      console.log("✅ Start Session button listener attached");
-    } else {
-      console.error("❌ startSessionBtn element not found!");
-    }
-    // Access LocalNotifications safely
+  async function initApp() {
+    console.log("🚀 Initializing NoScroll App...");
+
+    // Wait for Capacitor bridge to be ready
+    await waitForCapacitorReady();
+
+    console.log("✅ Capacitor bridge ready, initializing plugins...");
+
+    // Get plugin references safely
     const { LocalNotifications } = Capacitor.Plugins || {};
     if (!LocalNotifications) {
-      console.warn("⚠️ LocalNotifications not ready yet, retrying...");
+      console.error("❌ LocalNotifications not ready after bridge init");
       return;
     }
+
     window.LocalNotifications = LocalNotifications;
 
     // ✅ Create notification channel
@@ -327,7 +324,7 @@
       console.warn("⚠️ Failed to create channel:", e);
     }
 
-    // ✅ Request permission
+    // ✅ Ask notification permission
     try {
       const result = await LocalNotifications.requestPermissions();
       if (result.display === 'granted') {
@@ -339,14 +336,36 @@
       console.warn("⚠️ Permission request failed:", e);
     }
 
-    // Optional: listen for app state changes
-    if (window.App) {
-      App.addListener('appStateChange', (state) => {
-        console.log("App state changed:", state.isActive);
-      });
+    // ✅ Attach Start Session button
+    const startSessionBtn = document.getElementById('start-session-btn');
+    if (startSessionBtn) {
+      startSessionBtn.addEventListener('click', startSessionHandler);
+      console.log("✅ Start Session button listener attached");
+    } else {
+      console.error("❌ startSessionBtn element not found!");
     }
-  });
+
+    console.log("✅ App initialization complete");
+  }
+
+  // Helper: Wait for Capacitor to be ready
+  async function waitForCapacitorReady() {
+    return new Promise((resolve) => {
+      const checkReady = () => {
+        if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+          resolve();
+        } else {
+          console.log("⏳ Waiting for Capacitor bridge...");
+          setTimeout(checkReady, 300);
+        }
+      };
+      checkReady();
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', initApp);
 </script>
+
 
 
   <script>
