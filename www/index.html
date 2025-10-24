@@ -288,9 +288,6 @@
   window.App = App;
 </script>
 
-let timeLimitInput = null;
-let socialAppSelect = null;
-let timerDisplay = null;
 
 <!-- ✅ MAIN SCRIPT -->
 <script>
@@ -342,11 +339,12 @@ let timerDisplay = null;
 
     // ✅ Attach Start Session button
     const startSessionBtn = document.getElementById('start-session-btn');
+	console.log("button",startSessionBtn);
 	timeLimitInput = document.getElementById('timeLimit');
 	socialAppSelect = document.getElementById('socialApp'); // Use your actual ID!
     timerDisplay = document.getElementById('timer-display');
 
-    if (startSessionBtn && timeLimitInput && socialAppSelect && timerDisplay) {
+    if (startSessionBtn) {
       startSessionBtn.addEventListener('click', startSessionHandler);
       console.log("✅ Start Session button listener attached");
     } else {
