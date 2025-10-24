@@ -281,13 +281,15 @@
   </div>
   
   
- 
+  <script type="module">
+  import { AppLauncher } from '@capacitor/app-launcher';
+  import { App } from '@capacitor/app'; 
+  window.AppLauncher = AppLauncher;
+  window.App = App;
+</script>
 
 <!-- ✅ MAIN SCRIPT -->
-
 <script>
-  document.addEventListener('DOMContentLoaded', initApp);
-
   async function initApp() {
     console.log("🚀 Initializing NoScroll App...");
 
@@ -296,18 +298,16 @@
 
     console.log("✅ Capacitor bridge ready, initializing plugins...");
 
-    // ✅ Get plugin references safely (no module imports!)
-    const { LocalNotifications, AppLauncher, App } = Capacitor.Plugins || {};
+    // Get plugin references safely
+    const { LocalNotifications } = Capacitor.Plugins || {};
     if (!LocalNotifications) {
       console.error("❌ LocalNotifications not ready after bridge init");
       return;
     }
 
     window.LocalNotifications = LocalNotifications;
-    window.AppLauncher = AppLauncher;
-    window.App = App;
 
-    // ✅ Create notification channel (Android only)
+    // ✅ Create notification channel
     try {
       await LocalNotifications.createChannel({
         id: "alarm",
@@ -338,7 +338,7 @@
 
     // ✅ Attach Start Session button
     const startSessionBtn = document.getElementById('start-session-btn');
-    console.log("button", startSessionBtn);
+	console.log("button",startSessionBtn);
     if (startSessionBtn) {
       startSessionBtn.addEventListener('click', startSessionHandler);
       console.log("✅ Start Session button listener attached");
@@ -351,21 +351,22 @@
 
   // Helper: Wait for Capacitor to be ready
   async function waitForCapacitorReady() {
-  return new Promise((resolve) => {
-    const checkReady = () => {
-      if (window.Capacitor && window.Capacitor.Plugins && Object.keys(window.Capacitor.Plugins).length > 0) {
-        console.log("✅ Capacitor bridge is ready");
-        resolve();
-      } else {
-        console.log("⏳ Waiting for Capacitor plugins to load...");
-        setTimeout(checkReady, 300);
-      }
-    };
-    checkReady();
-  });
-}
+    return new Promise((resolve) => {
+      const checkReady = () => {
+        if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+          resolve();
+        } else {
+          console.log("⏳ Waiting for Capacitor bridge...");
+          setTimeout(checkReady, 300);
+        }
+      };
+      checkReady();
+    });
+  }
 
+  document.addEventListener('DOMContentLoaded', initApp);
 </script>
+
 
 
   <script>
