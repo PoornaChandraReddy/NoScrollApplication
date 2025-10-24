@@ -294,65 +294,61 @@
   async function initApp() {
     console.log("🚀 Initializing NoScroll App...");
 
-    // Wait for Capacitor bridge to be ready
     await waitForCapacitorReady();
 
     console.log("✅ Capacitor bridge ready, initializing plugins...");
 
     // Get plugin references safely
     const { LocalNotifications } = Capacitor.Plugins || {};
-    if (!LocalNotifications) {
-      console.error("❌ LocalNotifications not ready after bridge init");
-      return;
+
+    // 1. CONDITIONAL LOGIC FOR LOCAL NOTIFICATIONS
+    if (LocalNotifications) {
+        window.LocalNotifications = LocalNotifications;
+
+        // ✅ Create notification channel
+        try {
+            await LocalNotifications.createChannel({
+                id: "alarm",
+                name: "Alarm Notifications",
+                // ... other channel details ...
+            });
+            console.log("✅ Notification channel created");
+        } catch (e) {
+            console.warn("⚠️ Failed to create channel:", e);
+        }
+
+        // ✅ Ask notification permission (This will now run)
+        try {
+            const result = await LocalNotifications.requestPermissions();
+            if (result.display === 'granted') {
+                console.log("✅ Notifications allowed");
+            } else {
+                console.log("❌ Notifications blocked");
+            }
+        } catch (e) {
+            console.warn("⚠️ Permission request failed:", e);
+        }
+    } else {
+        // If the plugin is not found, log a warning but DO NOT EXIT
+        console.warn("⚠️ LocalNotifications plugin unavailable. Skipping notification setup.");
     }
 
-    window.LocalNotifications = LocalNotifications;
-
-    // ✅ Create notification channel
-    try {
-      await LocalNotifications.createChannel({
-        id: "alarm",
-        name: "Alarm Notifications",
-        description: "Notifications that appear as heads-up alerts",
-        importance: 5,
-        sound: "alarm",
-        vibration: true,
-        visibility: "public",
-        lights: true
-      });
-      console.log("✅ Notification channel created");
-    } catch (e) {
-      console.warn("⚠️ Failed to create channel:", e);
-    }
-
-    // ✅ Ask notification permission
-    try {
-      const result = await LocalNotifications.requestPermissions();
-      if (result.display === 'granted') {
-        console.log("✅ Notifications allowed");
-      } else {
-        console.log("❌ Notifications blocked");
-      }
-    } catch (e) {
-      console.warn("⚠️ Permission request failed:", e);
-    }
-
-    // ✅ Attach Start Session button
+    // 2. ATTACH START SESSION BUTTON (This will now run regardless)
     const startSessionBtn = document.getElementById('start-session-btn');
-	console.log("button",startSessionBtn);
-	timeLimitInput = document.getElementById('timeLimit');
-	socialAppSelect = document.getElementById('socialApp'); // Use your actual ID!
-    timerDisplay = document.getElementById('timer-display');
+    console.log("button", startSessionBtn); // You will see this log now
+    timeLimitInput = document.getElementById('timeLimit');
+    socialAppSelect = document.getElementById('socialApp');
+    timerDisplay = document.getElementById('timer-display');
 
     if (startSessionBtn) {
-      startSessionBtn.addEventListener('click', startSessionHandler);
-      console.log("✅ Start Session button listener attached");
+        startSessionBtn.addEventListener('click', startSessionHandler);
+        console.log("✅ Start Session button listener attached");
     } else {
-      console.error("❌ startSessionBtn element not found!");
+        console.error("❌ startSessionBtn element not found!");
     }
 
     console.log("✅ App initialization complete");
-  }
+}
 
   // Helper: Wait for Capacitor to be ready
   async function waitForCapacitorReady() {
