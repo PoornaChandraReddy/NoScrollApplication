@@ -356,18 +356,26 @@
 
   // Helper: Wait for Capacitor to be ready
   async function waitForCapacitorReady() {
-    return new Promise((resolve) => {
-      const checkReady = () => {
-        if (window.Capacitor && window.Capacitor.isNativePlatform()) {
-          resolve();
-        } else {
-          console.log("⏳ Waiting for Capacitor bridge...");
-          setTimeout(checkReady, 300);
+    return new Promise((resolve) => {
+      const checkReady = () => {
+        // Check if Capacitor is available AND running on a native platform
+        if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+          console.log("✅ Capacitor bridge detected on native platform.");
+          resolve();
+        } 
+        // 👈 NEW CONDITION: If window.Capacitor is NOT available (i.e., running in a standard browser)
+        else if (!window.Capacitor) { 
+            console.warn("⚠️ Capacitor bridge not found. Proceeding with web initialization.");
+            resolve(); // Resolve immediately to continue initApp
         }
-      };
-      checkReady();
-    });
-  }
+        else {
+          console.log("⏳ Waiting for Capacitor bridge...");
+          setTimeout(checkReady, 300);
+        }
+      };
+      checkReady();
+    });
+  }
 
   document.addEventListener('DOMContentLoaded', initApp);
 </script>
