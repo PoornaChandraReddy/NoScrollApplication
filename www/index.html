@@ -7,16 +7,6 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-  <script>
-    if (window.location.protocol === 'capacitor:' || /android/i.test(navigator.userAgent)) {
-      const script = document.createElement('script');
-      script.src = 'capacitor.js';
-      document.head.appendChild(script);
-      console.log("📱 Native environment detected — capacitor.js loaded");
-    } else {
-      console.log("🌐 Web mode detected — skipping capacitor.js");
-    }
-  </script>
   <style>
     :root {
       --primary-blue: #3b82f6;
@@ -291,7 +281,7 @@
   </div>
   
   
-
+ 
 
 <!-- ✅ MAIN SCRIPT -->
 
