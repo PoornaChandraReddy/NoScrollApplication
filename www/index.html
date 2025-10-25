@@ -279,43 +279,45 @@
   
 <script>
 // --- START: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY ---
-// 1. NON-NATIVE FALLBACK: Define Capacitor object for web environment to prevent ReferenceError
-// The object will be overwritten by the native bridge when running in a real device.
 window.Capacitor = window.Capacitor || {
   isNativePlatform: () => false,
   isPluginAvailable: (name) => !!window.Capacitor.Plugins[name],
   Plugins: {
     App: {
-      // Mock App.addListener to prevent crash in App State Change block
       addListener: (event, callback) => {
         console.warn(`Capacitor App.addListener called in web environment. Event: ${event}`);
       }
     },
-    // Mock the plugins that are used in the main script to prevent crash
     AppLauncher: {
       canOpenUrl: async ({ url }) => ({ value: false }),
-      openUrl: async ({ url }) => { console.warn(`AppLauncher.openUrl called for: ${url}. Skipping in web mode.`); }
+      openUrl: async ({ url }) => {
+        console.warn(`AppLauncher.openUrl called for: ${url}. Skipping in web mode.`);
+      }
     },
-    LocalNotifications: undefined // Will be used to check for availability
+    LocalNotifications: undefined // Web fallback
   }
 };
 
-// Expose App and AppLauncher globally for the main script logic to find them
 window.AppLauncher = window.Capacitor.Plugins.AppLauncher;
 window.App = window.Capacitor.Plugins.App;
 // --- END: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY ---
 
 
-// --- MAIN APP INITIALIZATION (NON-BLOCKING) ---
-async function initApp() {
-  console.log("🚀 Initializing NoScroll App (Non-Blocking)...");
+// --- GLOBAL TIMER CONTROL ---
+let timerInterval = null;
+let isPaused = false;
+let pauseStart = null;
+let pausedSeconds = 0;
+let currentSelectedApp = "YourAppName"; // optional placeholder
 
-  // Get plugin references safely
-  const { LocalNotifications } = window.Capacitor.Plugins || {};
-  
-  // ✅ 1. ATTACH START SESSION BUTTON (MOVED UP TO ATTACH IMMEDIATELY)
+// --- MAIN APP INITIALIZATION ---
+async function initApp() {
+  console.log("🚀 Initializing NoScroll App...");
+
+  const { LocalNotifications, App } = window.Capacitor.Plugins || {};
+
+  // ✅ Attach Start Session Button Immediately
   const startSessionBtn = document.getElementById('start-session-btn');
-  console.log("button", startSessionBtn);
   if (startSessionBtn) {
     startSessionBtn.addEventListener('click', startSessionHandler);
     console.log("✅ Start Session button listener attached");
@@ -323,14 +325,10 @@ async function initApp() {
     console.error("❌ startSessionBtn element not found!");
   }
 
-
-  // 2. RUN NATIVE-SPECIFIC CODE CONDITIONALLY
+  // ✅ Local Notifications Setup
   if (LocalNotifications) {
-    window.LocalNotifications = LocalNotifications;
-    console.log("✅ LocalNotifications plugin detected. Starting native setup...");
-
-    // ✅ Create notification channel
     try {
+      // Create Notification Channel (Android)
       await LocalNotifications.createChannel({
         id: "alarm",
         name: "Alarm Notifications",
@@ -342,32 +340,73 @@ async function initApp() {
         lights: true
       });
       console.log("✅ Notification channel created");
-    } catch (e) {
-      console.warn("⚠️ Failed to create channel:", e);
-    }
 
-    // ✅ Ask notification permission
-    try {
+      // Request Notification Permissions (shows Allow/Deny popup)
       const result = await LocalNotifications.requestPermissions();
-      if (result.display === 'granted') {
-        console.log("✅ Notifications allowed");
+      if (result.display === 'granted' || result.receive === 'granted') {
+        console.log("✅ Notifications allowed by user");
       } else {
-        console.log("❌ Notifications blocked");
+        console.warn("⚠️ Notifications denied by user");
       }
     } catch (e) {
-      console.warn("⚠️ Permission request failed:", e);
+      console.warn("⚠️ Notification setup failed:", e);
     }
   } else {
-    console.warn("⚠️ Running in Web Mode. Native setup (LocalNotifications) skipped.");
+    console.warn("⚠️ Running in Web Mode. Skipping LocalNotifications setup.");
   }
 
+  // ✅ App State Listener: Pause when Foregrounded, Resume when Backgrounded
+  if (App) {
+    App.addListener('appStateChange', ({ isActive }) => {
+      if (timerInterval) {
+        if (isActive) {
+          // ✅ App in foreground → PAUSE
+          isPaused = true;
+          pauseStart = Date.now();
+          document.getElementById('tracker-status').textContent =
+            `⏸️ Paused while app is open (foreground).`;
+          console.log("⏸️ Timer paused (app in foreground)");
+        } else {
+          // ✅ App in background → RESUME
+          if (pauseStart) {
+            pausedSeconds += Math.floor((Date.now() - pauseStart) / 1000);
+            pauseStart = null;
+          }
+          isPaused = false;
+          document.getElementById('tracker-status').textContent =
+            "▶️ Session resumed in background.";
+          console.log("▶️ Timer resumed (app in background)");
+        }
+      }
+    });
+  }
 
   console.log("✅ App initialization complete");
 }
 
+// --- Example Notification (for testing) ---
+async function scheduleOneMinuteWarning() {
+  try {
+    await window.LocalNotifications.schedule({
+      notifications: [{
+        id: 1,
+        title: "⏳ Time almost up!",
+        body: "Only 1 minute left in your NoScroll session!",
+        schedule: { at: new Date(Date.now() + 5000) }, // 5s for testing
+        sound: "alarm",
+        channelId: "alarm",
+        vibrate: true
+      }]
+    });
+    console.log("✅ Test notification scheduled");
+  } catch (e) {
+    console.error("❌ Failed to schedule notification:", e);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', initApp);
-// --- END MAIN APP INITIALIZATION ---
 </script>
+
 
 
   <script>
