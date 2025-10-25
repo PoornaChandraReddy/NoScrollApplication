@@ -277,70 +277,57 @@
   </div>
   
   
-<script type="module">
-  // If you are using module imports, keep them here
-   import { AppLauncher } from '@capacitor/app-launcher';
-   import { App } from '@capacitor/app'; 
-   window.AppLauncher = AppLauncher;
-   window.App = App;
-  
-  // NOTE: If you are not using modules, the following script block will handle the native plugin access.
-</script>
-
 <script>
-// --- GLOBAL TIMER CONTROL ---
-let timerInterval = null;
-let isPaused = false;
-let pauseStart = null;
-let pausedSeconds = 0;
-let currentSelectedApp = "YourAppName"; // placeholder
+// --- START: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY ---
+// 1. NON-NATIVE FALLBACK: Define Capacitor object for web environment to prevent ReferenceError
+// The object will be overwritten by the native bridge when running in a real device.
+window.Capacitor = window.Capacitor || {
+  isNativePlatform: () => false,
+  isPluginAvailable: (name) => !!window.Capacitor.Plugins[name],
+  Plugins: {
+    App: {
+      // Mock App.addListener to prevent crash in App State Change block
+      addListener: (event, callback) => {
+        console.warn(`Capacitor App.addListener called in web environment. Event: ${event}`);
+      }
+    },
+    // Mock the plugins that are used in the main script to prevent crash
+    AppLauncher: {
+      canOpenUrl: async ({ url }) => ({ value: false }),
+      openUrl: async ({ url }) => { console.warn(`AppLauncher.openUrl called for: ${url}. Skipping in web mode.`); }
+    },
+    LocalNotifications: undefined // Will be used to check for availability
+  }
+};
 
-// --- HELPER: Wait for Capacitor to be ready (From your working code) ---
-async function waitForCapacitorReady() {
-  return new Promise((resolve) => {
-    // Check if the Capacitor object exists AND if it has a native method (like isNativePlatform)
-    const checkReady = () => {
-      // Use window.Capacitor here, as the module imports might not have finished.
-      if (window.Capacitor && window.Capacitor.Plugins) {
-        // If App plugin is available, we assume the bridge is ready enough.
-        if (window.Capacitor.Plugins.App) {
-          resolve();
-          return;
-        }
-      } 
-      // Fallback for environment where Capacitor is expected but not ready yet
-      console.log("⏳ Waiting for Capacitor bridge...");
-      setTimeout(checkReady, 300);
-    };
-    checkReady();
-  });
-}
+// Expose App and AppLauncher globally for the main script logic to find them
+window.AppLauncher = window.Capacitor.Plugins.AppLauncher;
+window.App = window.Capacitor.Plugins.App;
+// --- END: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY ---
 
-// --- MAIN APP INITIALIZATION ---
+
+// --- MAIN APP INITIALIZATION (NON-BLOCKING) ---
 async function initApp() {
-  console.log("🚀 Initializing NoScroll App...");
+  console.log("🚀 Initializing NoScroll App (Non-Blocking)...");
 
-  // 1. Wait for the native bridge to be fully ready
-  await waitForCapacitorReady();
-  console.log("✅ Capacitor bridge ready, initializing plugins...");
-
-  // Get plugin references safely from the now-ready Capacitor object
-  // Note: We access them via window.Capacitor.Plugins which should now hold the real native objects
-  const { LocalNotifications, App } = window.Capacitor.Plugins || {};
-
-  // ✅ 2. ATTACH START SESSION BUTTON
+  // Get plugin references safely
+  const { LocalNotifications } = window.Capacitor.Plugins || {};
+  
+  // ✅ 1. ATTACH START SESSION BUTTON (MOVED UP TO ATTACH IMMEDIATELY)
   const startSessionBtn = document.getElementById('start-session-btn');
+  console.log("button", startSessionBtn);
   if (startSessionBtn) {
-    // Assuming startSessionHandler is defined elsewhere
     startSessionBtn.addEventListener('click', startSessionHandler);
     console.log("✅ Start Session button listener attached");
   } else {
     console.error("❌ startSessionBtn element not found!");
   }
-  
-  // ✅ 3. LOCAL NOTIFICATIONS SETUP (Runs only when the plugin is truly available)
+
+
+  // 2. RUN NATIVE-SPECIFIC CODE CONDITIONALLY
   if (LocalNotifications) {
-    window.LocalNotifications = LocalNotifications; // Assign for global use (like scheduleOneMinuteWarning)
+    window.LocalNotifications = LocalNotifications;
+    console.log("✅ LocalNotifications plugin detected. Starting native setup...");
 
     // ✅ Create notification channel
     try {
@@ -359,7 +346,7 @@ async function initApp() {
       console.warn("⚠️ Failed to create channel:", e);
     }
 
-    // ✅ Ask notification permission (THIS SHOULD NOW WORK)
+    // ✅ Ask notification permission
     try {
       const result = await LocalNotifications.requestPermissions();
       if (result.display === 'granted') {
@@ -371,41 +358,15 @@ async function initApp() {
       console.warn("⚠️ Permission request failed:", e);
     }
   } else {
-    console.warn("⚠️ LocalNotifications plugin not available. Skipping native setup.");
+    console.warn("⚠️ Running in Web Mode. Native setup (LocalNotifications) skipped.");
   }
 
-  // ✅ 4. APP STATE LISTENER (Runs only when the App plugin is truly available)
-  if (App) {
-    App.addListener('appStateChange', ({ isActive }) => {
-      if (timerInterval) { 
-        
-        if (isActive) {
-          // ✅ App is foregrounded (user is in the NoScroll app) → PAUSE
-          isPaused = true;
-          pauseStart = Date.now(); 
-          document.getElementById('tracker-status').textContent = 
-            `⏸️ Paused while app is open.`; 
-          console.log("⏸️ Timer paused (app in foreground)");
-          
-        } else {
-          // ✅ App is backgrounded (user is in another app) → RESUME
-          if (pauseStart) {
-            pausedSeconds += Math.floor((Date.now() - pauseStart) / 1000);
-            pauseStart = null;
-          }
-          isPaused = false; 
-          document.getElementById('tracker-status').textContent = 
-            `▶️ Session running, tracking usage of ${currentSelectedApp}.`;
-          console.log("▶️ Timer resumed (app in background)");
-        }
-      }
-    });
-  }
 
   console.log("✅ App initialization complete");
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
+// --- END MAIN APP INITIALIZATION ---
 </script>
 
 
