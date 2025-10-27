@@ -277,87 +277,59 @@
   </div>
   
   
- <script type="module">
-  import { AppLauncher } from '@capacitor/app-launcher';
-  import { App } from '@capacitor/app'; 
-  window.AppLauncher = AppLauncher;
-  window.App = App;
-</script>
-
 <script>
-
- let currentSelectedApp = null;
- 
-    // 🚀 START SESSION BUTTON LISTENER (CRITICAL FIX: MOVED OUT OF SHOWPAGE)
-    async function startSessionHandler() {
-  const timeLimitInMinutes = parseInt(timeLimitInput.value);
-  const selectedApp = socialAppSelect.value;
-  localStorage.setItem('selectedApp', selectedApp);
-  currentSelectedApp = selectedApp;
-  console.log("selected APP", currentSelectedApp);
-
-  document.getElementById('selected-app-name').textContent = selectedApp;
-  if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
-    alert('Please enter a valid time limit.');
-    return;
-  }
-
-  showPage('tracker-card');
-  pausedSeconds = 0;
-  startTime = Date.now();
-  const timeLimitInSeconds = timeLimitInMinutes * 60;
-  let notifScheduled = false;
-  clearInterval(timerInterval);
-
-  timerInterval = setInterval(() => {
-    if (!isPaused) {
-      const elapsedTime = Math.floor((Date.now() - startTime) / 1000) + pausedSeconds;
-      const remaining = timeLimitInSeconds - elapsedTime;
-      const minutes = Math.floor(remaining / 60);
-      const seconds = remaining % 60;
-
-      timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-
-      if (remaining <= 0) {
-        clearInterval(timerInterval);
-        endSession(true);
+// --- START: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY ---
+// 1. NON-NATIVE FALLBACK: Define Capacitor object for web environment to prevent ReferenceError
+// The object will be overwritten by the native bridge when running in a real device.
+window.Capacitor = window.Capacitor || {
+  isNativePlatform: () => false,
+  isPluginAvailable: (name) => !!window.Capacitor.Plugins[name],
+  Plugins: {
+    App: {
+      // Mock App.addListener to prevent crash in App State Change block
+      addListener: (event, callback) => {
+        console.warn(`Capacitor App.addListener called in web environment. Event: ${event}`);
       }
-
-      if (remaining <= 60 && remaining > 0 && !notifScheduled) {
-        notifScheduled = true;
-        if (window.LocalNotifications) {
-          scheduleOneMinuteWarning();
-        } else {
-          console.warn("⚠️ LocalNotifications object is missing.");
-        }
-      }
-    }
-  }, 1000);
-
-  try {
-    await openApp(selectedApp);
-  } catch (e) {
-    console.error(`${selectedApp} launch failed:`, e);
+    },
+    // Mock the plugins that are used in the main script to prevent crash
+    AppLauncher: {
+      canOpenUrl: async ({ url }) => ({ value: false }),
+      openUrl: async ({ url }) => { console.warn(`AppLauncher.openUrl called for: ${url}. Skipping in web mode.`); }
+    },
+    LocalNotifications: undefined // Will be used to check for availability
   }
-}
+};
+
+// Expose App and AppLauncher globally for the main script logic to find them
+window.AppLauncher = window.Capacitor.Plugins.AppLauncher;
+window.App = window.Capacitor.Plugins.App;
+// --- END: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY ---
 
 
+// --- MAIN APP INITIALIZATION (NON-BLOCKING) ---
 async function initApp() {
-  console.log("🚀 Initializing NoScroll App...");
+  console.log("🚀 Initializing NoScroll App (Non-Blocking)...");
 
-  await waitForCapacitorReady();
-
-  console.log("✅ Capacitor bridge ready, initializing plugins...");
-
-  const { LocalNotifications } = Capacitor.Plugins || {};
-  if (!LocalNotifications) {
-    console.error("❌ LocalNotifications not ready after bridge init");
-    return;
+  // Get plugin references safely
+  const { LocalNotifications } = window.Capacitor.Plugins || {};
+  
+  // ✅ 1. ATTACH START SESSION BUTTON (MOVED UP TO ATTACH IMMEDIATELY)
+  const startSessionBtn = document.getElementById('start-session-btn');
+  console.log("button", startSessionBtn);
+  if (startSessionBtn) {
+    startSessionBtn.addEventListener('click', startSessionHandler);
+    console.log("✅ Start Session button listener attached");
+  } else {
+    console.error("❌ startSessionBtn element not found!");
   }
-  window.LocalNotifications = LocalNotifications;
 
-  // Only show permission popup if not already asked (optional)
-  if (!localStorage.getItem('notificationPermissionRequested')) {
+
+  // 2. RUN NATIVE-SPECIFIC CODE CONDITIONALLY
+  if (LocalNotifications) {
+    window.LocalNotifications = LocalNotifications;
+    console.log("✅ LocalNotifications plugin detected. Starting native setup...");
+
+    // ✅ Create notification channel
     try {
       await LocalNotifications.createChannel({
         id: "alarm",
@@ -374,6 +346,7 @@ async function initApp() {
       console.warn("⚠️ Failed to create channel:", e);
     }
 
+    // ✅ Ask notification permission
     try {
       const result = await LocalNotifications.requestPermissions();
       if (result.display === 'granted') {
@@ -381,40 +354,21 @@ async function initApp() {
       } else {
         console.log("❌ Notifications blocked");
       }
-      localStorage.setItem('notificationPermissionRequested', 'true');
     } catch (e) {
       console.warn("⚠️ Permission request failed:", e);
     }
+  } else {
+    console.warn("⚠️ Running in Web Mode. Native setup (LocalNotifications) skipped.");
   }
 
-  // Attach button handler safely
-  const startSessionBtn = document.getElementById('start-session-btn');
-  if (startSessionBtn) {
-    startSessionBtn.addEventListener('click', startSessionHandler);
-    console.log("✅ Start Session button listener attached");
-  } else {
-    console.error("❌ startSessionBtn element not found!");
-  }
 
   console.log("✅ App initialization complete");
 }
 
-async function waitForCapacitorReady() {
-  return new Promise((resolve) => {
-    const checkReady = () => {
-      if (window.Capacitor && window.Capacitor.isNativePlatform()) {
-        resolve();
-      } else {
-        setTimeout(checkReady, 300);
-      }
-    };
-    checkReady();
-  });
-}
-
 document.addEventListener('DOMContentLoaded', initApp);
-
+// --- END MAIN APP INITIALIZATION ---
 </script>
+
 
   <script>
   
@@ -770,7 +724,60 @@ async function scheduleOneMinuteWarning() {
     }
 }
 
-  
+   let currentSelectedApp = null;
+ 
+    // 🚀 START SESSION BUTTON LISTENER (CRITICAL FIX: MOVED OUT OF SHOWPAGE)
+    async function startSessionHandler() {
+  const timeLimitInMinutes = parseInt(timeLimitInput.value);
+  const selectedApp = socialAppSelect.value;
+  localStorage.setItem('selectedApp', selectedApp);
+  currentSelectedApp = selectedApp;
+  console.log("selected APP", currentSelectedApp);
+
+  document.getElementById('selected-app-name').textContent = selectedApp;
+  if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
+    alert('Please enter a valid time limit.');
+    return;
+  }
+
+  showPage('tracker-card');
+  pausedSeconds = 0;
+  startTime = Date.now();
+  const timeLimitInSeconds = timeLimitInMinutes * 60;
+  let notifScheduled = false;
+  clearInterval(timerInterval);
+
+  timerInterval = setInterval(() => {
+    if (!isPaused) {
+      const elapsedTime = Math.floor((Date.now() - startTime) / 1000) + pausedSeconds;
+      const remaining = timeLimitInSeconds - elapsedTime;
+      const minutes = Math.floor(remaining / 60);
+      const seconds = remaining % 60;
+
+      timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+      if (remaining <= 0) {
+        clearInterval(timerInterval);
+        endSession(true);
+      }
+
+      if (remaining <= 60 && remaining > 0 && !notifScheduled) {
+        notifScheduled = true;
+        if (window.LocalNotifications) {
+          scheduleOneMinuteWarning();
+        } else {
+          console.warn("⚠️ LocalNotifications object is missing.");
+        }
+      }
+    }
+  }, 1000);
+
+  try {
+    await openApp(selectedApp);
+  } catch (e) {
+    console.error(`${selectedApp} launch failed:`, e);
+  }
+}
 
 
 
