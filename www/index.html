@@ -702,7 +702,35 @@ document.addEventListener('DOMContentLoaded', initApp);
       });
     });
 	
-	
+// 🚨 2. FINAL TIME LIMIT REACHED NOTIFICATION
+async function scheduleSessionEndNotification(selectedApp, timeLimitInMinutes) {
+  try {
+    const funnyMessages = [
+      `🎯 ${selectedApp} time limit (${timeLimitInMinutes} min) reached!`,
+      "😎 Great discipline! You’re off duty for today — come back tomorrow stronger!",
+      "🚫 App closed — detox mode on! 📵",
+      "👏 You did it! Time’s up — go touch some grass 🌿",
+      "🌙 Session complete. Time to relax and recharge!"
+    ];
+
+    const randomMessage = funnyMessages[Math.floor(Math.random() * funnyMessages.length)];
+
+    await window.LocalNotifications.schedule({
+      notifications: [{
+        id: 2,
+        title: "🕒 Session Complete!",
+        body: randomMessage,
+        schedule: { at: new Date(Date.now() + 3000) }, // Fire instantly after time’s up (3s delay)
+        sound: "default",
+        channelId: "alarm",
+        vibrate: true
+      }]
+    });
+    console.log("✅ Session end notification scheduled!");
+  } catch (e) {
+    console.error("❌ Failed to schedule end notification:", e);
+  }
+}	
 	// Helper function to schedule the notification
 async function scheduleOneMinuteWarning() {
     try {
@@ -710,7 +738,7 @@ async function scheduleOneMinuteWarning() {
             notifications: [{
                 id: 1,
                 title: "⏳ Time almost up!",
-                body: "Only 1 minute left in your NoScroll session!",
+                body: "Only 1 minute left in your ${timeLimitInMinutes}-minute session on ${selectedApp}!Stay focused 💪`",
                 schedule: { at: new Date(Date.now() + 5000) }, // ✅ Use 5s delay for better testing (see note below)
                 sound: "default",
 				channelId: "alarm", // match the new channel
@@ -755,12 +783,17 @@ async function scheduleOneMinuteWarning() {
       const seconds = remaining % 60;
 
       timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-
+// 🟢 When time’s up
       if (remaining <= 0) {
         clearInterval(timerInterval);
+		if (!endNotifScheduled) {
+          endNotifScheduled = true;
+          scheduleSessionEndNotification(selectedApp, timeLimitInMinutes);
+        }
         endSession(true);
       }
 
+// 🟡 Trigger the 1-minute warning
       if (remaining <= 60 && remaining > 0 && !notifScheduled) {
         notifScheduled = true;
         if (window.LocalNotifications) {
@@ -854,14 +887,18 @@ if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App
     if (timerInterval) { 
       
       if (isActive) {
-        // ✅ App is foregrounded (user is in the NoScroll app) → PAUSE the timer
-        isPaused = true;
-        pauseStart = Date.now(); // Start tracking pause time
-        document.getElementById('tracker-status').textContent = 
-          `⏸️ Paused while app is open.`; 
-        console.log("⏸️ Timer paused (app in foreground)");
-        
-      } else {
+  // ✅ App is foregrounded (user is in the NoScroll app) → PAUSE the timer
+  isPaused = true;
+  pauseStart = Date.now(); // Start tracking pause time
+
+  // ✅ Fetch selected app name dynamically
+  const selectedApp = localStorage.getItem('selectedApp') || 'the selected app';
+
+  document.getElementById('tracker-status').textContent =
+    `⏸️ Paused while ${selectedApp} is open.`;
+
+  console.log(`⏸️ Timer paused (app in foreground for ${selectedApp})`);
+} else {
         // ✅ App is backgrounded (user is in another app) → RESUME the timer
         if (pauseStart) {
           // Calculate how long it was paused for and add to total paused time
