@@ -738,7 +738,7 @@ async function scheduleOneMinuteWarning() {
             notifications: [{
                 id: 1,
                 title: "⏳ Time almost up!",
-                body: "Only 1 minute left in your ${timeLimitInMinutes}-minute session on ${selectedApp}!Stay focused 💪`",
+                body: `Only 1 minute left in your ${timeLimitInMinutes}-minute session on ${selectedApp}! Stay focused 💪`,
                 schedule: { at: new Date(Date.now() + 5000) }, // ✅ Use 5s delay for better testing (see note below)
                 sound: "default",
 				channelId: "alarm", // match the new channel
@@ -773,6 +773,7 @@ async function scheduleOneMinuteWarning() {
   startTime = Date.now();
   const timeLimitInSeconds = timeLimitInMinutes * 60;
   let notifScheduled = false;
+  let endNotifScheduled = false;
   clearInterval(timerInterval);
 
   timerInterval = setInterval(() => {
@@ -783,15 +784,7 @@ async function scheduleOneMinuteWarning() {
       const seconds = remaining % 60;
 
       timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-// 🟢 When time’s up
-      if (remaining <= 0) {
-        clearInterval(timerInterval);
-		if (!endNotifScheduled) {
-          endNotifScheduled = true;
-          scheduleSessionEndNotification(selectedApp, timeLimitInMinutes);
-        }
-        endSession(true);
-      }
+
 
 // 🟡 Trigger the 1-minute warning
       if (remaining <= 60 && remaining > 0 && !notifScheduled) {
@@ -801,6 +794,16 @@ async function scheduleOneMinuteWarning() {
         } else {
           console.warn("⚠️ LocalNotifications object is missing.");
         }
+      }
+	  
+	  // 🟢 When time’s up
+      if (remaining <= 0) {
+        clearInterval(timerInterval);
+		if (!endNotifScheduled) {
+          endNotifScheduled = true;
+          scheduleSessionEndNotification(selectedApp, timeLimitInMinutes);
+        }
+        endSession(true);
       }
     }
   }, 1000);
