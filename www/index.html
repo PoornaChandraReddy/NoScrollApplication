@@ -732,7 +732,7 @@ async function scheduleSessionEndNotification(selectedApp, timeLimitInMinutes) {
   }
 }	
 	// Helper function to schedule the notification
-async function scheduleOneMinuteWarning() {
+async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
     try {
         await window.LocalNotifications.schedule({
             notifications: [{
@@ -790,7 +790,7 @@ async function scheduleOneMinuteWarning() {
       if (remaining <= 60 && remaining > 0 && !notifScheduled) {
         notifScheduled = true;
         if (window.LocalNotifications) {
-          scheduleOneMinuteWarning();
+          scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp);
         } else {
           console.warn("⚠️ LocalNotifications object is missing.");
         }
