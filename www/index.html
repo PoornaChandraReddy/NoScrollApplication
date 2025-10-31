@@ -738,7 +738,7 @@ async function scheduleOneMinuteWarning() {
             notifications: [{
                 id: 1,
                 title: "⏳ Time almost up!",
-                body: "Only 1 minute left in your ${timeLimitInMinutes}-minute session on ${selectedApp}! Stay focused 💪",
+                body: `Only 1 minute left in your ${timeLimitInMinutes}-minute session on ${selectedApp}! Stay focused 💪`, //  <-- Corrected: using backticks (`)
                 schedule: { at: new Date(Date.now() + 5000) }, // ✅ Use 5s delay for better testing (see note below)
                 sound: "default",
 				channelId: "alarm", // match the new channel
