@@ -361,8 +361,24 @@ async function initApp() {
     console.warn("⚠️ Running in Web Mode. Native setup (LocalNotifications) skipped.");
   }
 
-
+    // ✅ Ask system permissions for App Usage Access, Overlay, and Accessibility
+  await requestSystemPermissions();
   console.log("✅ App initialization complete");
+}
+
+// --- SYSTEM PERMISSIONS REQUEST FUNCTION ---
+async function requestSystemPermissions() {
+  try {
+    const { AppUsageMonitor } = window.Capacitor.Plugins;
+    if (AppUsageMonitor) {
+      await AppUsageMonitor.requestPermissions();
+      console.log("✅ System permissions requested successfully!");
+    } else {
+      console.warn("⚠️ AppUsageMonitor plugin not found.");
+    }
+  } catch (err) {
+    console.error("❌ Error requesting permissions:", err);
+  }
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
