@@ -281,24 +281,23 @@
 // --- START: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY ---
 // 1. NON-NATIVE FALLBACK: Define Capacitor object for web environment to prevent ReferenceError
 // The object will be overwritten by the native bridge when running in a real device.
-window.Capacitor = window.Capacitor || {
-  isNativePlatform: () => false,
-  isPluginAvailable: (name) => !!window.Capacitor.Plugins[name],
-  Plugins: {
-    App: {
-      // Mock App.addListener to prevent crash in App State Change block
-      addListener: (event, callback) => {
-        console.warn(`Capacitor App.addListener called in web environment. Event: ${event}`);
-      }
-    },
-    // Mock the plugins that are used in the main script to prevent crash
-    AppLauncher: {
-      canOpenUrl: async ({ url }) => ({ value: false }),
-      openUrl: async ({ url }) => { console.warn(`AppLauncher.openUrl called for: ${url}. Skipping in web mode.`); }
-    },
-    LocalNotifications: undefined // Will be used to check for availability
-  }
-};
+if (typeof window.Capacitor === "undefined" || !window.Capacitor.isNativePlatform?.()) {
+  console.warn("🧩 Running in Web Mode - using mock Capacitor plugins");
+
+  window.Capacitor = {
+    isNativePlatform: () => false,
+    Plugins: {
+      App: {
+        addListener: (event, callback) => console.warn(`Mock App listener: ${event}`)
+      },
+      AppLauncher: {
+        canOpenUrl: async () => ({ value: false }),
+        openUrl: async ({ url }) => console.warn(`Mock openUrl: ${url}`)
+      },
+      LocalNotifications: undefined
+    }
+  };
+}
 
 // Expose App and AppLauncher globally for the main script logic to find them
 window.AppLauncher = window.Capacitor.Plugins.AppLauncher;
