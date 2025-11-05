@@ -279,8 +279,6 @@
   
 <script>
 // --- START: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY ---
-// 1. NON-NATIVE FALLBACK: Define Capacitor object for web environment to prevent ReferenceError
-// The object will be overwritten by the native bridge when running in a real device.
 if (typeof window.Capacitor === "undefined" || !window.Capacitor.isNativePlatform?.()) {
   console.warn("🧩 Running in Web Mode - using mock Capacitor plugins");
 
@@ -299,22 +297,33 @@ if (typeof window.Capacitor === "undefined" || !window.Capacitor.isNativePlatfor
   };
 }
 
-// Expose App and AppLauncher globally for the main script logic to find them
 window.AppLauncher = window.Capacitor.Plugins.AppLauncher;
 window.App = window.Capacitor.Plugins.App;
 // --- END: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY ---
 
 
+// --- 🧩 MANUAL FALLBACK FOR CUSTOM PLUGIN (AppUsageMonitor) ---
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!window.Capacitor.Plugins.AppUsageMonitor) {
+    console.warn("⚠️ AppUsageMonitor not auto-registered, binding manually...");
+    window.Capacitor.Plugins.AppUsageMonitor = {
+      requestPermissions: async () => {
+        console.log("📱 Attempting to call native AppUsageMonitor.requestPermissions()");
+        // This will hit the native Java method if bridge is available
+        return await window.Capacitor.Plugins.AppUsageMonitor?.requestPermissions?.() || {};
+      }
+    };
+  }
+});
+
 // --- MAIN APP INITIALIZATION (NON-BLOCKING) ---
 async function initApp() {
   console.log("🚀 Initializing NoScroll App (Non-Blocking)...");
 
-  // Get plugin references safely
   const { LocalNotifications } = window.Capacitor.Plugins || {};
-  
-  // ✅ 1. ATTACH START SESSION BUTTON (MOVED UP TO ATTACH IMMEDIATELY)
+
+  // ✅ Attach start session button
   const startSessionBtn = document.getElementById('start-session-btn');
-  console.log("button", startSessionBtn);
   if (startSessionBtn) {
     startSessionBtn.addEventListener('click', startSessionHandler);
     console.log("✅ Start Session button listener attached");
@@ -322,13 +331,11 @@ async function initApp() {
     console.error("❌ startSessionBtn element not found!");
   }
 
-
-  // 2. RUN NATIVE-SPECIFIC CODE CONDITIONALLY
+  // ✅ Local Notifications setup
   if (LocalNotifications) {
     window.LocalNotifications = LocalNotifications;
     console.log("✅ LocalNotifications plugin detected. Starting native setup...");
 
-    // ✅ Create notification channel
     try {
       await LocalNotifications.createChannel({
         id: "alarm",
@@ -345,7 +352,6 @@ async function initApp() {
       console.warn("⚠️ Failed to create channel:", e);
     }
 
-    // ✅ Ask notification permission
     try {
       const result = await LocalNotifications.requestPermissions();
       if (result.display === 'granted') {
@@ -360,7 +366,7 @@ async function initApp() {
     console.warn("⚠️ Running in Web Mode. Native setup (LocalNotifications) skipped.");
   }
 
-    // ✅ Ask system permissions for App Usage Access, Overlay, and Accessibility
+  // ✅ Request App Usage / Overlay / Accessibility Permissions
   await requestSystemPermissions();
   console.log("✅ App initialization complete");
 }
@@ -370,6 +376,7 @@ async function requestSystemPermissions() {
   try {
     const { AppUsageMonitor } = window.Capacitor.Plugins;
     if (AppUsageMonitor) {
+      console.log("🔄 Calling AppUsageMonitor.requestPermissions()...");
       await AppUsageMonitor.requestPermissions();
       console.log("✅ System permissions requested successfully!");
     } else {
@@ -383,6 +390,7 @@ async function requestSystemPermissions() {
 document.addEventListener('DOMContentLoaded', initApp);
 // --- END MAIN APP INITIALIZATION ---
 </script>
+
 
 
   <script>
