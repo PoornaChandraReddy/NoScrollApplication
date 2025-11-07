@@ -375,12 +375,23 @@ async function initApp() {
 async function requestSystemPermissions() {
   try {
     const { AppUsageMonitor } = window.Capacitor.Plugins;
-    if (AppUsageMonitor) {
-      console.log("🔄 Calling AppUsageMonitor.requestPermissions()...");
-      await AppUsageMonitor.requestPermissions();
-      console.log("✅ System permissions requested successfully!");
-    } else {
+
+    if (!AppUsageMonitor) {
       console.warn("⚠️ AppUsageMonitor plugin not found.");
+      return;
+    }
+
+    console.log("🔄 Calling AppUsageMonitor.requestPermissions()...");
+    const result = await AppUsageMonitor.requestPermissions();
+
+    if (result?.status === "already_granted" || result?.status === "all_permissions_granted") {
+      console.log("✅ Ready to track apps!");
+      // 👉 Optionally call your app initialization logic here
+      // initAppTracking();
+    } else if (result?.status === "pending_notification_permission") {
+      console.log("🔔 Notification permission pending, please confirm on screen.");
+    } else {
+      console.log("⏳ Waiting for permissions to complete...");
     }
   } catch (err) {
     console.error("❌ Error requesting permissions:", err);
