@@ -279,6 +279,13 @@
   
 <script>
 // --- START: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY ---
+
+// 🎯 FIX 1: Explicitly import Capacitor plugins for reliable access
+import { Capacitor } from 'https://cdn.jsdelivr.net/npm/@capacitor/core@5.7.4/dist/capacitor.js';
+import { App } from 'https://cdn.jsdelivr.net/npm/@capacitor/app@5.0.7/dist/app.js';
+import { LocalNotifications } from 'https://cdn.jsdelivr.net/npm/@capacitor/local-notifications@5.0.7/dist/local-notifications.js';
+
+
 if (typeof window.Capacitor === "undefined" || !window.Capacitor.isNativePlatform?.()) {
   console.warn("🧩 Running in Web Mode - using mock Capacitor plugins");
 
@@ -292,13 +299,15 @@ if (typeof window.Capacitor === "undefined" || !window.Capacitor.isNativePlatfor
         canOpenUrl: async () => ({ value: false }),
         openUrl: async ({ url }) => console.warn(`Mock openUrl: ${url}`)
       },
-      LocalNotifications: undefined
+      LocalNotifications: undefined // Keep this undefined for proper fallback handling
     }
   };
 }
 
+// Global exposure for older code compatibility
 window.AppLauncher = window.Capacitor.Plugins.AppLauncher;
 window.App = window.Capacitor.Plugins.App;
+window.LocalNotifications = window.Capacitor.Plugins.LocalNotifications;
 // --- END: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY ---
 
 
@@ -317,11 +326,48 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // --- MAIN APP INITIALIZATION (NON-BLOCKING) ---
+
+// 🎯 FIX 2: Added function for channel setup to ensure it runs
+async function setupNotificationChannel() {
+    if (window.LocalNotifications) {
+        try {
+            // Re-creating the channel is idempotent (safe to call multiple times)
+            await window.LocalNotifications.createChannel({
+                id: "alarm", // Ensure this ID is used consistently
+                name: "Alarm Notifications",
+                description: "Notifications that appear as heads-up alerts",
+                importance: 5,
+                sound: "alarm",
+                vibration: true,
+                visibility: "public",
+                lights: true
+            });
+            console.log("✅ Notification channel created/updated");
+        } catch (e) {
+            console.warn("⚠️ Failed to create channel:", e);
+        }
+
+        try {
+            const result = await window.LocalNotifications.requestPermissions();
+            if (result.display === 'granted') {
+                console.log("✅ Notifications allowed");
+            } else {
+                console.log("❌ Notifications blocked");
+            }
+        } catch (e) {
+            console.warn("⚠️ Permission request failed:", e);
+        }
+    } else {
+        console.warn("⚠️ Running in Web Mode. Native setup (LocalNotifications) skipped.");
+    }
+}
+
 async function initApp() {
   console.log("🚀 Initializing NoScroll App (Non-Blocking)...");
 
-  const { LocalNotifications } = window.Capacitor.Plugins || {};
-
+  // ✅ Local Notifications setup MUST happen before scheduling
+  await setupNotificationChannel(); 
+  
   // ✅ Attach start session button
   const startSessionBtn = document.getElementById('start-session-btn');
   if (startSessionBtn) {
@@ -329,41 +375,6 @@ async function initApp() {
     console.log("✅ Start Session button listener attached");
   } else {
     console.error("❌ startSessionBtn element not found!");
-  }
-
-  // ✅ Local Notifications setup
-  if (LocalNotifications) {
-    window.LocalNotifications = LocalNotifications;
-    console.log("✅ LocalNotifications plugin detected. Starting native setup...");
-
-    try {
-      await LocalNotifications.createChannel({
-        id: "alarm",
-        name: "Alarm Notifications",
-        description: "Notifications that appear as heads-up alerts",
-        importance: 5,
-        sound: "alarm",
-        vibration: true,
-        visibility: "public",
-        lights: true
-      });
-      console.log("✅ Notification channel created");
-    } catch (e) {
-      console.warn("⚠️ Failed to create channel:", e);
-    }
-
-    try {
-      const result = await LocalNotifications.requestPermissions();
-      if (result.display === 'granted') {
-        console.log("✅ Notifications allowed");
-      } else {
-        console.log("❌ Notifications blocked");
-      }
-    } catch (e) {
-      console.warn("⚠️ Permission request failed:", e);
-    }
-  } else {
-    console.warn("⚠️ Running in Web Mode. Native setup (LocalNotifications) skipped.");
   }
 
   // ✅ Request App Usage / Overlay / Accessibility Permissions
@@ -386,8 +397,6 @@ async function requestSystemPermissions() {
 
     if (result?.status === "already_granted" || result?.status === "all_permissions_granted") {
       console.log("✅ Ready to track apps!");
-      // 👉 Optionally call your app initialization logic here
-      // initAppTracking();
     } else if (result?.status === "pending_notification_permission") {
       console.log("🔔 Notification permission pending, please confirm on screen.");
     } else {
@@ -407,7 +416,6 @@ document.addEventListener('DOMContentLoaded', initApp);
   <script>
   
    // Get base API URL (ngrok or localhost)
-   // NOTE: Using a static value here for simplicity based on your file
    const API_BASE_URL = "https://noscrollapplication.onrender.com";
    console.log("Using API:", API_BASE_URL);
   
@@ -447,7 +455,12 @@ document.addEventListener('DOMContentLoaded', initApp);
     let startTime;
     let timerInterval;
 	
-	
+    // 🎯 FIX 3: Global state variables for pause logic (moved from the bottom of the file)
+    let isPaused = false;
+    let pauseStart = null;
+    let pausedSeconds = 0;
+
+
     // --- Message Box Function ---
     function showAlert(message, type = 'success') {
       if (!messageBox) {
@@ -518,7 +531,8 @@ document.addEventListener('DOMContentLoaded', initApp);
       clearInterval(timerInterval);
       const endTime = Date.now();
       // Use global startTime and timeLimitInput
-      const elapsedTimeInSeconds = Math.floor((endTime - startTime) / 1000);
+      const elapsedTimeInSeconds = Math.floor((endTime - startTime) / 1000) + pausedSeconds; // Use adjusted time
+
       const timeLimitInMinutes = parseInt(timeLimitInput.value);
       const timeSpentInMinutes = Math.ceil(elapsedTimeInSeconds / 60);
 
@@ -754,7 +768,7 @@ async function scheduleSessionEndNotification(selectedApp, timeLimitInMinutes) {
         id: 2,
         title: "🕒 Session Complete!",
         body: randomMessage,
-        schedule: { at: new Date(Date.now() + 3000) }, // Fire instantly after time’s up (3s delay)
+        schedule: { at: new Date(Date.now() + 1000) }, // Fire instantly (1s delay for execution safety)
         sound: "default",
         channelId: "alarm",
         vibrate: true
@@ -772,8 +786,8 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
             notifications: [{
                 id: 1,
                 title: "⏳ Time almost up!",
-                body: `Only 1 minute left in your ${timeLimitInMinutes}-minute session on ${selectedApp}! Stay focused 💪`, //  <-- Corrected: using backticks (`)
-                schedule: { at: new Date(Date.now() + 5000) }, // ✅ Use 5s delay for better testing (see note below)
+                body: `Only 1 minute left in your ${timeLimitInMinutes}-minute session on ${selectedApp}! Stay focused 💪`,
+                schedule: { at: new Date(Date.now() + 1000) }, // Fire instantly
                 sound: "default",
 				channelId: "alarm", // match the new channel
                 sound: "alarm",
@@ -798,12 +812,16 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
 
   document.getElementById('selected-app-name').textContent = selectedApp;
   if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
-    alert('Please enter a valid time limit.');
+    showAlert('Please enter a valid time limit.', 'error'); // Changed alert to showAlert
     return;
   }
 
   showPage('tracker-card');
-  pausedSeconds = 0;
+  // 🎯 Reset pause state when starting a new session
+  pausedSeconds = 0; 
+  pauseStart = null;
+  isPaused = false; 
+
   startTime = Date.now();
   const timeLimitInSeconds = timeLimitInMinutes * 60;
   let notifScheduled = false;
@@ -811,8 +829,9 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
   clearInterval(timerInterval);
 
   timerInterval = setInterval(() => {
-    if (!isPaused) {
-      const elapsedTime = Math.floor((Date.now() - startTime) / 1000) + pausedSeconds;
+    if (!isPaused) { // Check the new global isPaused flag
+      // Calculate elapsed time correctly by adding previously paused time
+      const elapsedTime = Math.floor((Date.now() - startTime) / 1000) + pausedSeconds; 
       const remaining = timeLimitInSeconds - elapsedTime;
       const minutes = Math.floor(remaining / 60);
       const seconds = remaining % 60;
@@ -824,6 +843,7 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
       if (remaining <= 60 && remaining > 0 && !notifScheduled) {
         notifScheduled = true;
         if (window.LocalNotifications) {
+          // Schedule the notification to fire immediately upon hitting the 60-second mark
           scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp);
         } else {
           console.warn("⚠️ LocalNotifications object is missing.");
@@ -843,7 +863,9 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
   }, 1000);
 
   try {
-    await openApp(selectedApp);
+    // Note: If you want to use the native Android package name for app launching, 
+    // you should pass that (e.g., 'com.instagram.android') instead of the friendly name ('Instagram')
+    await openApp(selectedApp); 
   } catch (e) {
     console.error(`${selectedApp} launch failed:`, e);
   }
@@ -910,42 +932,41 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
 
 
 // --- App State Change: Pause/Resume Tracker ---
-let isPaused = false;
-let pauseStart = null;
-let pausedSeconds = 0;
-
 
 // The App plugin check is now conditional based on the global Capacitor object's contents
 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
-  const { App } = window.Capacitor.Plugins;
-
-  App.addListener('appStateChange', ({ isActive }) => {
+  
+  // 🎯 FIX 4: Use the imported App plugin
+  App.addListener('appStateChange', ({ isActive }) => { 
     // Only run if the timer is currently active
     if (timerInterval) { 
       
       if (isActive) {
-  // ✅ App is foregrounded (user is in the NoScroll app) → PAUSE the timer
-  isPaused = true;
-  pauseStart = Date.now(); // Start tracking pause time
+        // ✅ App is foregrounded (user is in the NoScroll app) → PAUSE the timer
+        if (!isPaused) { // Prevent double-pausing
+            isPaused = true;
+            pauseStart = Date.now(); // Start tracking pause time
 
-  // ✅ Fetch selected app name dynamically
-  const selectedApp = localStorage.getItem('selectedApp') || 'the selected app';
+            const selectedApp = localStorage.getItem('selectedApp') || 'the selected app';
 
-  document.getElementById('tracker-status').textContent =
-    `⏸️ Paused while ${selectedApp} is open.`;
+            document.getElementById('tracker-status').textContent =
+              `⏸️ Paused while tracking of ${selectedApp}.`;
 
-  console.log(`⏸️ Timer paused (app in foreground for ${selectedApp})`);
-} else {
-        // ✅ App is backgrounded (user is in another app) → RESUME the timer
-        if (pauseStart) {
-          // Calculate how long it was paused for and add to total paused time
-          pausedSeconds += Math.floor((Date.now() - pauseStart) / 1000);
-          pauseStart = null;
+            console.log(`⏸️ Timer paused (NoScroll app in foreground)`);
         }
-        isPaused = false; // The timer is now running
-        document.getElementById('tracker-status').textContent = 
-          `▶️ Session running, tracking usage of ${currentSelectedApp}.`;
-        console.log("▶️ Timer resumed (app in background)");
+      } else {
+        // ✅ App is backgrounded (user is in another app) → RESUME the timer
+        if (isPaused) { // Only resume if it was paused
+            if (pauseStart) {
+              // Calculate how long it was paused for and add to total paused time
+              pausedSeconds += Math.floor((Date.now() - pauseStart) / 1000);
+              pauseStart = null;
+            }
+            isPaused = false; // The timer is now running
+            document.getElementById('tracker-status').textContent = 
+              `▶️ Session running, tracking usage of ${currentSelectedApp}.`;
+            console.log("▶️ Timer resumed (NoScroll app in background)");
+        }
       }
     }
   });
