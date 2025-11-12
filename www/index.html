@@ -914,21 +914,29 @@ if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App
   const { App } = window.Capacitor.Plugins;
 
   App.addListener('appStateChange', ({ isActive }) => {
-    if (isActive) {
-      // ✅ App is foregrounded → PAUSE the timer
+  if (isActive) {
+    // App is foregrounded → PAUSE the timer
+    if (!isPaused) {
       isPaused = true;
       pauseStart = Date.now();
-      document.getElementById('tracker-status').textContent = `⏸️ Session is paused for ${currentSelectedApp}.`; // Correct with backticks ``
-    } else {
-      // ✅ App is backgrounded → RESUME the timer
+      document.getElementById('tracker-status')?.textContent =
+        `⏸️ Session is paused for ${currentSelectedApp}.`;
+      console.log("⏸️ Timer paused (App in foreground)");
+    }
+  } else {
+    // App is backgrounded → RESUME the timer
+    if (isPaused) {
       if (pauseStart) {
         pausedSeconds += Math.floor((Date.now() - pauseStart) / 1000);
         pauseStart = null;
       }
       isPaused = false;
-      document.getElementById('tracker-status').textContent = "▶️ Session running in background.";
+      document.getElementById('tracker-status')?.textContent = "▶️ Session running in background.";
+      console.log("▶️ Timer resumed (App in background)");
     }
-  });
+  }
+});
+
 }
 
 
