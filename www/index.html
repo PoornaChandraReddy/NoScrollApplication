@@ -382,7 +382,7 @@ async function requestSystemPermissions() {
     if (result?.status === "already_granted" || result?.status === "all_permissions_granted") {
       console.log("✅ Ready to track apps!");
 	  // ✅ Local Notifications setup MUST happen before scheduling
-     .await setupNotificationChannel(); 
+      await setupNotificationChannel(); 
 	  
     } else if (result?.status === "pending_notification_permission") {
       console.log("🔔 Notification permission pending, please confirm on screen.");
