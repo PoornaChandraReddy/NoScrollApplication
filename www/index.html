@@ -434,10 +434,7 @@ document.addEventListener('DOMContentLoaded', initApp);
     let startTime;
     let timerInterval;
 	
-    // 🎯 FIX 3: Global state variables for pause logic (moved from the bottom of the file)
-    let isPaused = false;
-    let pauseStart = null;
-    let pausedSeconds = 0;
+   
 
 
     // --- Message Box Function ---
@@ -908,43 +905,48 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
       });
     });
 
-
-
 // --- App State Change: Pause/Resume Tracker ---
+let isPaused = false;
+let pauseStart = null;
+let pausedSeconds = 0;
+
+// ✅ Wait until Capacitor bridge is fully ready
 document.addEventListener('DOMContentLoaded', () => {
-  const AppPlugin = window.Capacitor?.Plugins?.App || window.Capacitor?.App;
+  const initAppListener = () => {
+    const App = window.Capacitor?.Plugins?.App || window.Capacitor?.App;
+    if (!App) {
+      console.warn("⚠️ App plugin not ready yet, retrying in 500ms...");
+      setTimeout(initAppListener, 500);
+      return;
+    }
 
-  if (AppPlugin && typeof AppPlugin.addListener === 'function') {
-    AppPlugin.addListener('appStateChange', ({ isActive }) => {
-      if (timerInterval) {
-        const statusEl = document.getElementById('tracker-status');
-        if (!statusEl) return;
+    console.log("✅ App plugin detected, adding appStateChange listener...");
 
-        if (isActive) {
-          if (!isPaused) {
-            isPaused = true;
-            pauseStart = Date.now();
-            const selectedApp = localStorage.getItem('selectedApp') || 'the selected app';
-            statusEl.textContent = `⏸️ Paused while tracking of ${selectedApp}.`;
-            console.log("⏸️ Timer paused (NoScroll app in foreground)");
-          }
-        } else {
-          if (isPaused) {
-            if (pauseStart) {
-              pausedSeconds += Math.floor((Date.now() - pauseStart) / 1000);
-              pauseStart = null;
-            }
-            isPaused = false;
-            statusEl.textContent = `▶️ Session running, tracking usage of ${currentSelectedApp}.`;
-            console.log("▶️ Timer resumed (NoScroll app in background)");
-          }
+    App.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) {
+        // ✅ App is foregrounded → PAUSE the timer
+        isPaused = true;
+        pauseStart = Date.now();
+        document.getElementById('tracker-status').textContent =
+          `⏸️ Session is paused for ${currentSelectedApp}.`;
+        console.log("⏸️ Timer paused (App foreground)");
+      } else {
+        // ✅ App is backgrounded → RESUME the timer
+        if (pauseStart) {
+          pausedSeconds += Math.floor((Date.now() - pauseStart) / 1000);
+          pauseStart = null;
         }
+        isPaused = false;
+        document.getElementById('tracker-status').textContent =
+          "▶️ Session running in background.";
+        console.log("▶️ Timer resumed (App background)");
       }
     });
-  } else {
-    console.warn("⚠️ App plugin not available — pause/resume tracking disabled");
-  }
+  };
+
+  initAppListener(); // Start plugin detection
 });
+
 </script>
 </body>
 </html>
