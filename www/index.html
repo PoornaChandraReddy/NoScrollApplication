@@ -323,10 +323,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // 🎯 FIX 2: Added function for channel setup to ensure it runs
 async function setupNotificationChannel() {
-    if (window.LocalNotifications) {
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications) {
         try {
             // Re-creating the channel is idempotent (safe to call multiple times)
-            await window.LocalNotifications.createChannel({
+            await window.Capacitor.Plugins.LocalNotifications.createChannel({
                 id: "alarm", // Ensure this ID is used consistently
                 name: "Alarm Notifications",
                 description: "Notifications that appear as heads-up alerts",
@@ -341,26 +341,16 @@ async function setupNotificationChannel() {
             console.warn("⚠️ Failed to create channel:", e);
         }
 
-        try {
-            const result = await window.LocalNotifications.requestPermissions();
-            if (result.display === 'granted') {
-                console.log("✅ Notifications allowed");
-            } else {
-                console.log("❌ Notifications blocked");
-            }
-        } catch (e) {
-            console.warn("⚠️ Permission request failed:", e);
-        }
+        
     } else {
-        console.warn("⚠️ Running in Web Mode. Native setup (LocalNotifications) skipped.");
+        console.warn("⚠️ LocalNotifictions plugin not available");
     }
 }
 
 async function initApp() {
   console.log("🚀 Initializing NoScroll App (Non-Blocking)...");
 
-  // ✅ Local Notifications setup MUST happen before scheduling
-  await setupNotificationChannel(); 
+  
   
   // ✅ Attach start session button
   const startSessionBtn = document.getElementById('start-session-btn');
@@ -391,6 +381,9 @@ async function requestSystemPermissions() {
 
     if (result?.status === "already_granted" || result?.status === "all_permissions_granted") {
       console.log("✅ Ready to track apps!");
+	  // ✅ Local Notifications setup MUST happen before scheduling
+     .await setupNotificationChannel(); 
+	  
     } else if (result?.status === "pending_notification_permission") {
       console.log("🔔 Notification permission pending, please confirm on screen.");
     } else {
