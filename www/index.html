@@ -910,47 +910,26 @@ let isPaused = false;
 let pauseStart = null;
 let pausedSeconds = 0;
 
-// Wait until the Capacitor bridge is ready
-window.addEventListener('deviceready', () => {
-  console.log("✅ Capacitor bridge fully loaded");
-
-  const App = window.Capacitor?.Plugins?.App || window.Capacitor?.App;
-  if (!App) {
-    console.error("❌ App plugin still not found even after bridge load!");
-    return;
-  }
-
-  console.log("✅ App plugin detected, adding appStateChange listener...");
+if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+  const { App } = window.Capacitor.Plugins;
 
   App.addListener('appStateChange', ({ isActive }) => {
-    if (timerInterval) {
-      const statusEl = document.getElementById('tracker-status');
-      if (!statusEl) return;
-
-      if (isActive) {
-        // ✅ App foregrounded → Pause
-        if (!isPaused) {
-          isPaused = true;
-          pauseStart = Date.now();
-          const selectedApp = localStorage.getItem('selectedApp') || 'the selected app';
-          statusEl.textContent = `⏸️ Session is paused for ${selectedApp}.`;
-          console.log("⏸️ Timer paused (App foreground)");
-        }
-      } else {
-        // ✅ App backgrounded → Resume
-        if (isPaused) {
-          if (pauseStart) {
-            pausedSeconds += Math.floor((Date.now() - pauseStart) / 1000);
-            pauseStart = null;
-          }
-          isPaused = false;
-          statusEl.textContent = "▶️ Session running in background.";
-          console.log("▶️ Timer resumed (App background)");
-        }
+    if (isActive) {
+      // ✅ App is foregrounded → PAUSE the timer
+      isPaused = true;
+      pauseStart = Date.now();
+      document.getElementById('tracker-status').textContent = `⏸️ Session is paused for ${currentSelectedApp}.`; // Correct with backticks ``
+    } else {
+      // ✅ App is backgrounded → RESUME the timer
+      if (pauseStart) {
+        pausedSeconds += Math.floor((Date.now() - pauseStart) / 1000);
+        pauseStart = null;
       }
+      isPaused = false;
+      document.getElementById('tracker-status').textContent = "▶️ Session running in background.";
     }
   });
-});
+}
 
 
 </script>
