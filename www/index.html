@@ -279,11 +279,10 @@
 <script type="module">
 // --- START: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY (NOW IN MODULE) ---
 
-// 🎯 FIX 1: Explicitly import Capacitor plugins for reliable access
+// 🎯 FIX 1: Explicitly import Capacitor core. The plugins (App, LocalNotifications) 
+// will be accessed via the global 'window.Capacitor.Plugins' object.
 import { Capacitor } from 'https://cdn.jsdelivr.net/npm/@capacitor/core@5.7.4/dist/capacitor.js';
-// We import the App object directly here for use in the listener below
-import { App } from 'https://cdn.jsdelivr.net/npm/@capacitor/app@5.0.7/dist/app.js'; 
-import { LocalNotifications } from 'https://cdn.jsdelivr.net/npm/@capacitor/local-notifications@5.0.7/dist/local-notifications.js';
+// Removed explicit imports for App and LocalNotifications to fix CDN path issue.
 
 
 if (typeof window.Capacitor === "undefined" || !window.Capacitor.isNativePlatform?.()) {
@@ -306,7 +305,6 @@ if (typeof window.Capacitor === "undefined" || !window.Capacitor.isNativePlatfor
 
 // Global exposure for older code compatibility
 window.AppLauncher = window.Capacitor.Plugins.AppLauncher;
-// NOTE: We don't need to assign window.App here because we use the imported 'App' object directly for the listener
 window.LocalNotifications = window.Capacitor.Plugins.LocalNotifications;
 // --- END: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY ---
 
@@ -924,11 +922,12 @@ document.querySelectorAll('.pull-summary-btn').forEach(btn => {
 });
 
 // --- App State Change: Pause/Resume Tracker (Must be in module scope) ---
-// We use the imported 'App' object from the top of the file.
+// We now access the App plugin via the global Capacitor object, fixing the CDN import error.
 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
   
-  // 🎯 Use the imported App object (from line 13)
-  App.addListener('appStateChange', ({ isActive }) => { 
+  const AppPlugin = window.Capacitor.Plugins.App;
+
+  AppPlugin.addListener('appStateChange', ({ isActive }) => { 
     // CRITICAL: Only proceed if a session is actively running
     if (timerInterval) { 
       
