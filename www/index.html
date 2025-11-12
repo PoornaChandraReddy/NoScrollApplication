@@ -276,15 +276,9 @@
 
   </div>
   
-<script type="module">
-// --- START: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY (NOW IN MODULE) ---
-
-// 🎯 FIX 1: Explicitly import Capacitor core. The plugins (App, LocalNotifications) 
-// will be accessed via the global 'window.Capacitor.Plugins' object.
-import { Capacitor } from 'https://cdn.jsdelivr.net/npm/@capacitor/core@5.7.4/dist/capacitor.js';
-// Removed explicit imports for App and LocalNotifications to fix CDN path issue.
-
-
+  
+<script>
+// --- START: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY ---
 if (typeof window.Capacitor === "undefined" || !window.Capacitor.isNativePlatform?.()) {
   console.warn("🧩 Running in Web Mode - using mock Capacitor plugins");
 
@@ -298,13 +292,14 @@ if (typeof window.Capacitor === "undefined" || !window.Capacitor.isNativePlatfor
         canOpenUrl: async () => ({ value: false }),
         openUrl: async ({ url }) => console.warn(`Mock openUrl: ${url}`)
       },
-      LocalNotifications: undefined // Keep this undefined for proper fallback handling
+      LocalNotifications: undefined // Keep undefined for fallback
     }
   };
 }
 
-// Global exposure for older code compatibility
+// ✅ Global exposure for older code compatibility
 window.AppLauncher = window.Capacitor.Plugins.AppLauncher;
+window.App = window.Capacitor.Plugins.App;
 window.LocalNotifications = window.Capacitor.Plugins.LocalNotifications;
 // --- END: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY ---
 
@@ -316,149 +311,222 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.Capacitor.Plugins.AppUsageMonitor = {
       requestPermissions: async () => {
         console.log("📱 Attempting to call native AppUsageMonitor.requestPermissions()");
-        // This will hit the native Java method if bridge is available
-        return await window.Capacitor.Plugins.AppUsageMonitor?.requestPermissions?.() || {};
+        return { status: "mock" };
       }
     };
   }
 });
 
-
-// =======================================================
-// 🌐 GLOBAL STATE AND UI ELEMENTS
-// =======================================================
-const API_BASE_URL = "https://noscrollapplication.onrender.com";
-console.log("Using API:", API_BASE_URL);
-
-const messages = [
-  "👏 Keep it up! You're building healthy habits.",
-  "🌟 Awesome! Stay consistent and you’ll see results.",
-  "🔥 Great discipline today!",
-  "💪 Strong work! Balance is everything."
-];
-
-function getRandomMessage() {
-  return messages[Math.floor(Math.random() * messages.length)];
-}
-
-const setupCard = document.getElementById('setup-card');
-const timeLimitCard = document.getElementById('time-limit-card');
-const trackerCard = document.getElementById('tracker-card');
-const limitReachedCard = document.getElementById('limit-reached-card');
-const loadingOverlay = document.getElementById('loading-overlay');
-const messageBox = document.getElementById('message-box');
-
-const setupForm = document.getElementById('setup-form');
-const userTypeRadios = document.getElementsByName('userType');
-const parentFieldsDiv = document.getElementById('parent-fields');
-
-// 🚨 CRITICAL GLOBALS
-const timeLimitInput = document.getElementById('timeLimit');
-const timerDisplay = document.getElementById('timer-display');
-const startSessionBtn = document.getElementById('start-session-btn');
-const endSessionBtn = document.getElementById('end-session-btn');
-const socialAppSelect = document.getElementById('socialApp');
-
-let startTime;
-let timerInterval;
-
-// 🎯 Global state variables for pause logic (CRITICAL for AppStateChange)
-let isPaused = false;
-let pauseStart = null;
-let pausedSeconds = 0;
-let currentSelectedApp = null; // Defined globally here
-
-// --- Message Box Function ---
-function showAlert(message, type = 'success') {
-  if (!messageBox) {
-    alert(message); // fallback
-    return;
-  }
-  messageBox.textContent = message;
-  messageBox.className = 'message-box show ' + type;
-  setTimeout(() => messageBox.classList.remove('show'), 2500);
-}
-
-// --- Show Page Function ---
-function showPage(pageId) {
-  const pages = [setupCard, timeLimitCard, trackerCard, limitReachedCard, document.getElementById('session-summary-card')];
-  
-  // Show motivational message if showing session summary
-  if (pageId === 'session-summary-card') {
-    const msgEl = document.querySelector('#session-summary-card p.text-green-600');
-    if (msgEl) msgEl.textContent = getRandomMessage();
-  }
-
-  pages.forEach(page => {
-    if (page.id === pageId) {
-      page.classList.remove('hidden');
-    } else {
-      page.classList.add('hidden');
-    }
-  });
-}
-
-// --- API Call: Log Usage ---
-async function logUsage(timeLimit, timeSpentInSeconds) {
-  loadingOverlay.classList.remove('hidden');
-  const customerId = localStorage.getItem('customerId');
-  
-  const payload = {
-    action: "log_and_set_time",
-    customerId: customerId,
-    socialMediaApp: localStorage.getItem('selectedApp'), 
-    timeLimit: timeLimit,
-    timeSpent: timeSpentInSeconds,
-    usageDate: new Date().toISOString().split('T')[0] // 'YYYY-MM-DD'
-  };
-
+// --- MAIN APP INITIALIZATION (NON-BLOCKING) ---
+async function setupNotificationChannel() {
   try {
-    const res = await fetch(API_BASE_URL + "/api/log-usage", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const result = await res.json();
+    if (!window.Capacitor.Plugins.LocalNotifications) {
+      console.warn("⚠️ LocalNotifications plugin not available");
+      return;
+    }
 
-    if (res.ok && result.status === "success") {
-      showAlert('✅ Session ended. Usage log and time setting saved!', 'success');
+    await window.Capacitor.Plugins.LocalNotifications.createChannel({
+      id: "alarm",
+      name: "Alarm Notifications",
+      description: "Notifications that appear as heads-up alerts",
+      importance: 5,
+      sound: "alarm",
+      vibration: true,
+      visibility: "public",
+      lights: true
+    });
+    console.log("✅ Notification channel created/updated");
+  } catch (e) {
+    console.warn("⚠️ Failed to create channel:", e);
+  }
+  
+  // 👇  Add this right after
+const channels = await window.Capacitor.Plugins.LocalNotifications.listChannels();
+console.log("📡 Registered channels:", channels);
+}
+
+async function requestSystemPermissions() {
+  try {
+    const { AppUsageMonitor } = window.Capacitor.Plugins;
+
+    if (!AppUsageMonitor) {
+      console.warn("⚠️ AppUsageMonitor plugin not found.");
+      return;
+    }
+
+    console.log("🔄 Calling AppUsageMonitor.requestPermissions()...");
+    const result = await AppUsageMonitor.requestPermissions();
+
+    if (result?.status === "already_granted" || result?.status === "all_permissions_granted") {
+      console.log("✅ Ready to track apps!");
+      // ✅ Setup channel after permissions granted
+      await setupNotificationChannel();
+    } else if (result?.status === "pending_notification_permission") {
+      console.log("🔔 Notification permission pending, please confirm on screen.");
     } else {
-      showAlert(`❌ Error logging usage: ${result.message || 'Something went wrong'}`, 'error');
+      console.log("⏳ Waiting for permissions to complete...");
     }
   } catch (err) {
-    showAlert("❌ Network or API error during logging.", 'error');
-    console.error('Error logging usage:', err);
-  } finally {
-    loadingOverlay.classList.add('hidden');
+    console.error("❌ Error requesting permissions:", err);
   }
 }
 
-// Main End Session Logic
-function endSession(isAutoEnd) {
-  clearInterval(timerInterval);
-  const endTime = Date.now();
-  // Use adjusted elapsed time (including paused seconds)
-  const elapsedTimeInSeconds = Math.floor((endTime - startTime) / 1000) - pausedSeconds; // Subtract the time the NoScroll app was in foreground
+async function initApp() {
+  console.log("🚀 Initializing NoScroll App (Non-Blocking)...");
 
-  const timeLimitInMinutes = parseInt(timeLimitInput.value);
-  // Ensure time spent is not negative (though it shouldn't be with correct logic)
-  const timeSpentInMinutes = Math.max(0, Math.ceil(elapsedTimeInSeconds / 60)); 
-
-  // Log the usage
-  logUsage(timeLimitInMinutes, elapsedTimeInSeconds);
-
-  // Show correct card
-  if (isAutoEnd) {
-    showPage('limit-reached-card');
+  const startSessionBtn = document.getElementById('start-session-btn');
+  if (startSessionBtn) {
+    startSessionBtn.addEventListener('click', startSessionHandler);
+    console.log("✅ Start Session button listener attached");
   } else {
-    document.getElementById('summary-limit').textContent = timeLimitInMinutes;
-    document.getElementById('summary-spent').textContent = timeSpentInMinutes;
-    showPage('session-summary-card');
+    console.error("❌ startSessionBtn element not found!");
   }
+
+  await requestSystemPermissions();
+  console.log("✅ App initialization complete");
 }
 
-// --- App Launcher ---
-async function openApp(appName) {
+document.addEventListener('DOMContentLoaded', initApp);
+</script>
+
+
+
+
+  <script>
+  
+   // Get base API URL (ngrok or localhost)
+   const API_BASE_URL = "https://noscrollapplication.onrender.com";
+   console.log("Using API:", API_BASE_URL);
+  
+  const messages = [
+    "👏 Keep it up! You're building healthy habits.",
+    "🌟 Awesome! Stay consistent and you’ll see results.",
+    "🔥 Great discipline today!",
+    "💪 Strong work! Balance is everything."
+  ];
+
+  function getRandomMessage() {
+    return messages[Math.floor(Math.random() * messages.length)];
+  }
+  
+    // =======================================================
+    // 🌐 GLOBAL STATE AND UI ELEMENTS (CRITICAL FIX APPLIED)
+    // =======================================================
+    const setupCard = document.getElementById('setup-card');
+    const timeLimitCard = document.getElementById('time-limit-card');
+    const trackerCard = document.getElementById('tracker-card');
+    const limitReachedCard = document.getElementById('limit-reached-card');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const messageBox = document.getElementById('message-box');
+
+    const setupForm = document.getElementById('setup-form');
+    const userTypeRadios = document.getElementsByName('userType');
+    const parentFieldsDiv = document.getElementById('parent-fields');
+    
+    // 🚨 CRITICAL FIX: These must be looked up globally for timer functions 
+    // to access them without error.
+    const timeLimitInput = document.getElementById('timeLimit');
+    const timerDisplay = document.getElementById('timer-display');
+    const startSessionBtn = document.getElementById('start-session-btn');
+    const endSessionBtn = document.getElementById('end-session-btn');
+	const socialAppSelect = document.getElementById('socialApp');
+
+    let startTime;
+    let timerInterval;
+	
+   
+
+
+    // --- Message Box Function ---
+    function showAlert(message, type = 'success') {
+      if (!messageBox) {
+        alert(message); // fallback
+        return;
+      }
+      messageBox.textContent = message;
+      messageBox.className = 'message-box show ' + type;
+      setTimeout(() => messageBox.classList.remove('show'), 2500);
+    }
+
+    // --- Show Page Function ---
+    function showPage(pageId) {
+      const pages = [setupCard, timeLimitCard, trackerCard, limitReachedCard, document.getElementById('session-summary-card')];
+      
+      // Show motivational message if showing session summary
+      if (pageId === 'session-summary-card') {
+        const msgEl = document.querySelector('#session-summary-card p.text-green-600');
+        if (msgEl) msgEl.textContent = getRandomMessage();
+      }
+
+      pages.forEach(page => {
+        if (page.id === pageId) {
+          page.classList.remove('hidden');
+        } else {
+          page.classList.add('hidden');
+        }
+      });
+    }
+
+    // --- API Call: Log Usage ---
+    async function logUsage(timeLimit, timeSpentInSeconds) {
+      loadingOverlay.classList.remove('hidden');
+      const customerId = localStorage.getItem('customerId');
+      
+      const payload = {
+        action: "log_and_set_time",
+        customerId: customerId,
+        socialMediaApp: localStorage.getItem('selectedApp'), // Assuming the app name is static for simplicity
+        timeLimit: timeLimit,
+        timeSpent: timeSpentInSeconds,
+        usageDate: new Date().toISOString().split('T')[0] // 'YYYY-MM-DD'
+      };
+    
+      try {
+        const res = await fetch(API_BASE_URL + "/api/log-usage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const result = await res.json();
+    
+        if (res.ok && result.status === "success") {
+          showAlert('✅ Session ended. Usage log and time setting saved!', 'success');
+        } else {
+          showAlert(`❌ Error logging usage: ${result.message || 'Something went wrong'}`, 'error');
+        }
+      } catch (err) {
+        showAlert("❌ Network or API error during logging.", 'error');
+        console.error('Error logging usage:', err);
+      } finally {
+        loadingOverlay.classList.add('hidden');
+      }
+    }
+    
+    // Main End Session Logic
+    function endSession(isAutoEnd) {
+      clearInterval(timerInterval);
+      const endTime = Date.now();
+      // Use global startTime and timeLimitInput
+      const elapsedTimeInSeconds = Math.floor((endTime - startTime) / 1000) + pausedSeconds; // Use adjusted time
+
+      const timeLimitInMinutes = parseInt(timeLimitInput.value);
+      const timeSpentInMinutes = Math.ceil(elapsedTimeInSeconds / 60);
+
+      // Log the usage
+      logUsage(timeLimitInMinutes, elapsedTimeInSeconds);
+
+      // Show correct card
+      if (isAutoEnd) {
+        showPage('limit-reached-card');
+      } else {
+        document.getElementById('summary-limit').textContent = timeLimitInMinutes;
+        document.getElementById('summary-spent').textContent = timeSpentInMinutes;
+        showPage('session-summary-card');
+      }
+    }
+	
+	// --- Instagram Launcher ---
+    async function openApp(appName) {
   // URLs for app + browser fallback
   const APP_URLS = {
     Instagram: { app: 'instagram://user?username=_', web: 'https://www.instagram.com/' },
@@ -481,104 +549,184 @@ async function openApp(appName) {
     window.open(urls.web, '_blank');
   }
 }
+   
+    // 🔹 Chart rendering
+    let summaryChart;
+    function renderSummaryChart(data, canvasElement) {
+      const ctx = canvasElement.getContext('2d');
 
-// 🔹 Chart rendering
-let summaryChart;
-function renderSummaryChart(data, canvasElement) {
-  const ctx = canvasElement.getContext('2d');
+      const labels = data.map(d => d.date);
+      const limits = data.map(d => d.timeLimit);
+      const spent = data.map(d => d.timeSpent);
 
-  const labels = data.map(d => d.date);
-  const limits = data.map(d => d.timeLimit);
-  const spent = data.map(d => d.timeSpent);
+      const spentColors = spent.map((s, i) =>
+        s > limits[i] ? "rgba(239,68,68,0.9)" : "rgba(16,185,129,0.9)"
+      );
 
-  const spentColors = spent.map((s, i) =>
-    s > limits[i] ? "rgba(239,68,68,0.9)" : "rgba(16,185,129,0.9)"
-  );
+      if (canvasElement.chart) {
+        canvasElement.chart.destroy();
+      }
 
-  if (canvasElement.chart) {
-    canvasElement.chart.destroy();
-  }
+      canvasElement.chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: "Time Limit", data: limits, backgroundColor: "rgba(59,130,246,0.7)" },
+            { label: "Time Spent", data: spent, backgroundColor: spentColors }
+          ]
+        },
+        options: { responsive: true, plugins: { legend: { position: "bottom" } } }
+      });
 
-  canvasElement.chart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: labels,
-      datasets: [
-        { label: "Time Limit", data: limits, backgroundColor: "rgba(59,130,246,0.7)" },
-        { label: "Time Spent", data: spent, backgroundColor: spentColors }
-      ]
-    },
-    options: { responsive: true, plugins: { legend: { position: "bottom" } } }
-  });
+      const storyDiv = document.createElement("div");
+      storyDiv.className = "mt-3 text-sm text-gray-700 space-y-1";
 
-  const storyDiv = document.createElement("div");
-  storyDiv.className = "mt-3 text-sm text-gray-700 space-y-1";
+      let within = 0, over = 0;
+      data.forEach((d, i) => {
+        let line = `Date(${d.date}): Limit ${d.timeLimit} mins, Spent ${d.timeSpent} mins → `;
+        if (d.timeSpent > d.timeLimit) {
+          line += `❌ Overused by ${d.timeSpent - d.timeLimit} mins`;
+          over++;
+        } else {
+          line += `✅ Within limit`;
+          within++;
+        }
+        const p = document.createElement("p");
+        p.textContent = line;
+        storyDiv.appendChild(p);
+      });
 
-  let within = 0, over = 0;
-  data.forEach((d, i) => {
-    let line = `Date(${d.date}): Limit ${d.timeLimit} mins, Spent ${d.timeSpent} mins → `;
-    if (d.timeSpent > d.timeLimit) {
-      line += `❌ Overused by ${d.timeSpent - d.timeLimit} mins`;
-      over++;
-    } else {
-      line += `✅ Within limit`;
-      within++;
+      const summary = document.createElement("p");
+      summary.className = "font-semibold mt-2";
+      summary.textContent = `Summary: ${within} days within limit, ${over} days overused`;
+      storyDiv.appendChild(summary);
+
+      const summaryCard = canvasElement.closest('.summary-card');
+      const oldStory = summaryCard.querySelector("#usage-story");
+      if (oldStory) oldStory.remove();
+      storyDiv.id = "usage-story";
+      summaryCard.appendChild(storyDiv);
     }
-    const p = document.createElement("p");
-    p.textContent = line;
-    storyDiv.appendChild(p);
-  });
+   
+    // =======================================================
+    // ⚙️ MAIN APP INITIALIZATION AND EVENT LISTENERS
+    // =======================================================
 
-  const summary = document.createElement("p");
-  summary.className = "font-semibold mt-2";
-  summary.textContent = `Summary: ${within} days within limit, ${over} days overused`;
-  storyDiv.appendChild(summary);
+    window.onload = async function() {
+      const customerId = localStorage.getItem('customerId');
+      const storedEmail = localStorage.getItem("email");
 
-  const summaryCard = canvasElement.closest('.summary-card');
-  const oldStory = summaryCard.querySelector("#usage-story");
-  if (oldStory) oldStory.remove();
-  storyDiv.id = "usage-story";
-  summaryCard.appendChild(storyDiv);
-}
+      loadingOverlay.classList.remove('hidden');
 
-// --- Notification Functions ---
-
-// 🎯 FIX 2: Added function for channel setup to ensure it runs
-async function setupNotificationChannel() {
-    if (window.LocalNotifications) {
+      if (customerId) {
+        // Existing user: Check daily usage
         try {
-            // Re-creating the channel is idempotent (safe to call multiple times)
-            await window.LocalNotifications.createChannel({
-                id: "alarm", // Ensure this ID is used consistently
-                name: "Alarm Notifications",
-                description: "Notifications that appear as heads-up alerts",
-                importance: 5,
-                sound: "alarm",
-                vibration: true,
-                visibility: "public",
-                lights: true
-            });
-            console.log("✅ Notification channel created/updated");
-        } catch (e) {
-            console.warn("⚠️ Failed to create channel:", e);
+          const res = await fetch(API_BASE_URL + "/api/log-usage", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "check_usage", customerId: customerId }),
+          });
+          const result = await res.json();
+          if (res.ok && result.salesforce_response.usedToday) {
+            showAlert('😴 You have reached your daily time limit.', 'success');
+            showPage('limit-reached-card');
+          } else {
+            showAlert('👋 Welcome back! Please set your new time limit.', 'success');
+            showPage('time-limit-card');
+          }
+        } catch (err) {
+          showAlert("❌ Network or API error during usage check.", 'error');
+          showPage('time-limit-card'); // Fallback to allow use
+        }
+      } else if (storedEmail) {
+        // New user but has stored email: Try to recover customerId
+        try {
+          const res = await fetch(API_BASE_URL + "/api/log-usage", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "get_customer_by_email", email: storedEmail }),
+          });
+          const result = await res.json();
+          if (res.ok && result.status === "success" && result.salesforce_response) {
+            localStorage.setItem("customerId", result.salesforce_response.customerId);
+            showPage("time-limit-card");
+          } else {
+            showPage('setup-card');
+          }
+        } catch (err) {
+          console.error("❌ Error during email recovery", err);
+          showPage('setup-card');
+        }
+      } else {
+        showPage('setup-card'); 
+      }
+	
+      loadingOverlay.classList.add('hidden');
+    };
+
+
+    // --- Setup Form Submission (DOMContentLoad needed for this) ---
+    document.addEventListener("DOMContentLoaded", () => {
+      // Parent/Individual radio button logic
+      userTypeRadios.forEach(radio => {
+        radio.addEventListener('change', (event) => {
+          if (event.target.value === 'Parent') {
+            parentFieldsDiv.classList.remove('hidden');
+          } else {
+            parentFieldsDiv.classList.add('hidden');
+          }
+        });
+      });
+
+      setupForm.addEventListener("submit", async (e) => {
+        e.preventDefault(); 
+        loadingOverlay.classList.remove("hidden");
+
+        const formData = new FormData(setupForm);
+        const payload = {
+          action: "setup",
+          customerName: formData.get("customerName"),
+          email: formData.get("email"),
+          age: parseInt(formData.get("age")),
+          userType: formData.get("userType"),
+          
+        };
+
+        if (payload.userType === "Parent") {
+          payload.childName = formData.get("childName");
+          payload.childEmail = formData.get("childEmail");
         }
 
         try {
-            const result = await window.LocalNotifications.requestPermissions();
-            if (result.display === 'granted') {
-                console.log("✅ Notifications allowed");
-            } else {
-                console.log("❌ Notifications blocked");
-            }
-        } catch (e) {
-            console.warn("⚠️ Permission request failed:", e);
-        }
-    } else {
-        console.warn("⚠️ Running in Web Mode. Native setup (LocalNotifications) skipped.");
-    }
-}
+          const res = await fetch(API_BASE_URL + "/api/log-usage", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
 
-// 🚨 FINAL TIME LIMIT REACHED NOTIFICATION
+          const result = await res.json();
+
+          if (res.ok && result.status === "success") {
+            const newCustomerId = result.salesforce_response.customerId;
+            const userEmail = result.salesforce_response.email;
+            localStorage.setItem("customerId", newCustomerId);
+            localStorage.setItem("email", userEmail);
+            showAlert("✅ Profile created successfully!", "success");
+            setTimeout(() => showPage("time-limit-card"), 500);
+          } else {
+            showAlert(`❌ ${result.message || "Something went wrong"}`, "error");
+          }
+        } catch (err) {
+          showAlert("❌ Network or server error", "error");
+          console.error(err);
+        } finally {
+          loadingOverlay.classList.add("hidden");
+        }
+      });
+    });
+	
+// 🚨 2. FINAL TIME LIMIT REACHED NOTIFICATION
 async function scheduleSessionEndNotification(selectedApp, timeLimitInMinutes) {
   try {
     const funnyMessages = [
@@ -627,17 +775,20 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
         console.error("❌ Failed to schedule notification:", e);
     }
 }
+
+   let currentSelectedApp = null;
  
-// 🚀 START SESSION BUTTON LISTENER
-async function startSessionHandler() {
+    // 🚀 START SESSION BUTTON LISTENER (CRITICAL FIX: MOVED OUT OF SHOWPAGE)
+    async function startSessionHandler() {
   const timeLimitInMinutes = parseInt(timeLimitInput.value);
   const selectedApp = socialAppSelect.value;
   localStorage.setItem('selectedApp', selectedApp);
-  currentSelectedApp = selectedApp; // Set the global variable
-  document.getElementById('selected-app-name').textContent = selectedApp;
+  currentSelectedApp = selectedApp;
+  console.log("selected APP", currentSelectedApp);
 
+  document.getElementById('selected-app-name').textContent = selectedApp;
   if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
-    showAlert('Please enter a valid time limit.', 'error');
+    showAlert('Please enter a valid time limit.', 'error'); // Changed alert to showAlert
     return;
   }
 
@@ -654,27 +805,21 @@ async function startSessionHandler() {
   clearInterval(timerInterval);
 
   timerInterval = setInterval(() => {
-    // CRITICAL: Only run the timer calculations if the app is NOT paused (i.e., NoScroll is backgrounded)
-    if (!isPaused) { 
-      // Calculate elapsed time correctly by adding previously paused time (subtraction in endSession)
-      const elapsedTime = Math.floor((Date.now() - startTime) / 1000); 
-      // The time we need to display is the limit MINUS the elapsed time.
-      // We will handle the pausedSeconds logic only in the appStateChange event.
-      
-      // Calculate the effective elapsed time that has been tracked (total time minus time spent paused)
-      const trackedElapsedTime = elapsedTime - pausedSeconds;
-      const remaining = timeLimitInSeconds - trackedElapsedTime;
-
+    if (!isPaused) { // Check the new global isPaused flag
+      // Calculate elapsed time correctly by adding previously paused time
+      const elapsedTime = Math.floor((Date.now() - startTime) / 1000) + pausedSeconds; 
+      const remaining = timeLimitInSeconds - elapsedTime;
       const minutes = Math.floor(remaining / 60);
       const seconds = remaining % 60;
 
       timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
 
-      // 🟡 Trigger the 1-minute warning
+// 🟡 Trigger the 1-minute warning
       if (remaining <= 60 && remaining > 0 && !notifScheduled) {
         notifScheduled = true;
         if (window.LocalNotifications) {
+          // Schedule the notification to fire immediately upon hitting the 60-second mark
           scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp);
         } else {
           console.warn("⚠️ LocalNotifications object is missing.");
@@ -694,273 +839,99 @@ async function startSessionHandler() {
   }, 1000);
 
   try {
-    // Launch the target social app
+    // Note: If you want to use the native Android package name for app launching, 
+    // you should pass that (e.g., 'com.instagram.android') instead of the friendly name ('Instagram')
     await openApp(selectedApp); 
   } catch (e) {
     console.error(`${selectedApp} launch failed:`, e);
   }
 }
 
-// --- SYSTEM PERMISSIONS REQUEST FUNCTION ---
-async function requestSystemPermissions() {
-  try {
-    const { AppUsageMonitor } = window.Capacitor.Plugins;
-
-    if (!AppUsageMonitor) {
-      console.warn("⚠️ AppUsageMonitor plugin not found.");
-      return;
-    }
-
-    console.log("🔄 Calling AppUsageMonitor.requestPermissions()...");
-    const result = await AppUsageMonitor.requestPermissions();
-
-    if (result?.status === "already_granted" || result?.status === "all_permissions_granted") {
-      console.log("✅ Ready to track apps!");
-    } else if (result?.status === "pending_notification_permission") {
-      console.log("🔔 Notification permission pending, please confirm on screen.");
-    } else {
-      console.log("⏳ Waiting for permissions to complete...");
-    }
-  } catch (err) {
-    console.error("❌ Error requesting permissions:", err);
-  }
-}
-
-// --- MAIN APP INITIALIZATION (NON-BLOCKING) ---
-async function initApp() {
-  console.log("🚀 Initializing NoScroll App (Non-Blocking)...");
-
-  // ✅ Local Notifications setup MUST happen before scheduling
-  await setupNotificationChannel(); 
-  
-  // ✅ Attach start session button
-  if (startSessionBtn) {
-    startSessionBtn.addEventListener('click', startSessionHandler);
-    console.log("✅ Start Session button listener attached");
-  } else {
-    console.error("❌ startSessionBtn element not found!");
-  }
-
-  // ✅ Request App Usage / Overlay / Accessibility Permissions
-  await requestSystemPermissions();
-  console.log("✅ App initialization complete");
-}
-
-document.addEventListener('DOMContentLoaded', initApp);
-// --- END MAIN APP INITIALIZATION ---
 
 
-window.onload = async function() {
-  const customerId = localStorage.getItem('customerId');
-  const storedEmail = localStorage.getItem("email");
-
-  loadingOverlay.classList.remove('hidden');
-
-  if (customerId) {
-    // Existing user: Check daily usage
-    try {
-      const res = await fetch(API_BASE_URL + "/api/log-usage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "check_usage", customerId: customerId }),
-      });
-      const result = await res.json();
-      if (res.ok && result.salesforce_response.usedToday) {
-        showAlert('😴 You have reached your daily time limit.', 'success');
-        showPage('limit-reached-card');
-      } else {
-        showAlert('👋 Welcome back! Please set your new time limit.', 'success');
-        showPage('time-limit-card');
-      }
-    } catch (err) {
-      showAlert("❌ Network or API error during usage check.", 'error');
-      showPage('time-limit-card'); // Fallback to allow use
-    }
-  } else if (storedEmail) {
-    // New user but has stored email: Try to recover customerId
-    try {
-      const res = await fetch(API_BASE_URL + "/api/log-usage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "get_customer_by_email", email: storedEmail }),
-      });
-      const result = await res.json();
-      if (res.ok && result.status === "success" && result.salesforce_response) {
-        localStorage.setItem("customerId", result.salesforce_response.customerId);
-        showPage("time-limit-card");
-      } else {
-        showPage('setup-card');
-      }
-    } catch (err) {
-      console.error("❌ Error during email recovery", err);
-      showPage('setup-card');
-    }
-  } else {
-    showPage('setup-card'); 
-  }
-
-  loadingOverlay.classList.add('hidden');
-};
-
-
-// --- Setup Form Submission ---
-document.addEventListener("DOMContentLoaded", () => {
-  // Parent/Individual radio button logic
-  userTypeRadios.forEach(radio => {
-    radio.addEventListener('change', (event) => {
-      if (event.target.value === 'Parent') {
-        parentFieldsDiv.classList.remove('hidden');
-      } else {
-        parentFieldsDiv.classList.add('hidden');
-      }
+    // End Session Button
+    endSessionBtn.addEventListener('click', () => {
+      endSession(false); // Manually end session
     });
-  });
+    
+    // Summary Button Logic (Attached to all .pull-summary-btn)
+    document.querySelectorAll('.pull-summary-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const customerId = localStorage.getItem('customerId');
+        if (!customerId) {
+          showAlert("❌ No customer found. Please setup profile first.", "error");
+          return;
+        }
 
-  setupForm.addEventListener("submit", async (e) => {
-    e.preventDefault(); 
-    loadingOverlay.classList.remove("hidden");
-
-    const formData = new FormData(setupForm);
-    const payload = {
-      action: "setup",
-      customerName: formData.get("customerName"),
-      email: formData.get("email"),
-      age: parseInt(formData.get("age")),
-      userType: formData.get("userType"),
-      
-    };
-
-    if (payload.userType === "Parent") {
-      payload.childName = formData.get("childName");
-      payload.childEmail = formData.get("childEmail");
-    }
-
-    try {
-      const res = await fetch(API_BASE_URL + "/api/log-usage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const result = await res.json();
-
-      if (res.ok && result.status === "success") {
-        const newCustomerId = result.salesforce_response.customerId;
-        const userEmail = result.salesforce_response.email;
-        localStorage.setItem("customerId", newCustomerId);
-        localStorage.setItem("email", userEmail);
-        showAlert("✅ Profile created successfully!", "success");
-        setTimeout(() => showPage("time-limit-card"), 500);
-      } else {
-        showAlert(`❌ ${result.message || "Something went wrong"}`, "error");
-      }
-    } catch (err) {
-      showAlert("❌ Network or server error", "error");
-      console.error(err);
-    } finally {
-      loadingOverlay.classList.add("hidden");
-    }
-  });
-});
-
-
-// End Session Button
-endSessionBtn.addEventListener('click', () => {
-  endSession(false); // Manually end session
-});
-
-
-// Summary Button Logic (Attached to all .pull-summary-btn)
-document.querySelectorAll('.pull-summary-btn').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    const customerId = localStorage.getItem('customerId');
-    if (!customerId) {
-      showAlert("❌ No customer found. Please setup profile first.", "error");
-      return;
-    }
-
-    loadingOverlay.classList.remove('hidden');
-    try {
-      const res = await fetch(API_BASE_URL + "/api/log-usage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "get_summary", customerId: customerId, days: 3 }),
-      });
-
-      const result = await res.json();
-
-      if (res.ok && result.status === "success") {
-        const sfResp = result.salesforce_response;
-        if (sfResp && sfResp.status === "success" && sfResp.data && sfResp.data.length > 0) {
-          
-          const template = document.getElementById('summary-template');
-          const clone = template.content.cloneNode(true);
-          const summaryCard = clone.querySelector('.summary-card');
-          const chartCanvas = clone.querySelector('.summary-chart');
-          
-          btn.insertAdjacentElement('afterend', summaryCard);
-
-          renderSummaryChart(sfResp.data, chartCanvas);
-
-          summaryCard.querySelector('.close-summary').addEventListener('click', () => {
-            summaryCard.remove();
+        loadingOverlay.classList.remove('hidden');
+        try {
+          const res = await fetch(API_BASE_URL + "/api/log-usage", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "get_summary", customerId: customerId, days: 3 }),
           });
 
-        } else {
-          showAlert("ℹ️ No summary data available.", "success");
-        }
-      } else {
-        showAlert("❌ Could not fetch summary", "error");
-      }
-    } catch (err) {
-      console.error(err);
-      showAlert("❌ Network or server error", "error");
-    } finally {
-      loadingOverlay.classList.add('hidden');
-    }
-  });
-});
+          const result = await res.json();
 
-// --- App State Change: Pause/Resume Tracker (Must be in module scope) ---
-// We now access the App plugin via the global Capacitor object, fixing the CDN import error.
-if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
-  
-  const AppPlugin = window.Capacitor.Plugins.App;
+          if (res.ok && result.status === "success") {
+            const sfResp = result.salesforce_response;
+            if (sfResp && sfResp.status === "success" && sfResp.data && sfResp.data.length > 0) {
+              
+              const template = document.getElementById('summary-template');
+              const clone = template.content.cloneNode(true);
+              const summaryCard = clone.querySelector('.summary-card');
+              const chartCanvas = clone.querySelector('.summary-chart');
+              
+              btn.insertAdjacentElement('afterend', summaryCard);
 
-  AppPlugin.addListener('appStateChange', ({ isActive }) => { 
-    // CRITICAL: Only proceed if a session is actively running
-    if (timerInterval) { 
-      
-      if (isActive) {
-        // ✅ State: NoScroll App is in the FOREGROUND (User is in the time-limiter app)
-        if (!isPaused) { // Only pause if not already paused
-            isPaused = true;
-            pauseStart = Date.now(); // Record the exact time the pause started
+              renderSummaryChart(sfResp.data, chartCanvas);
 
-            const appName = currentSelectedApp || 'the selected app';
+              summaryCard.querySelector('.close-summary').addEventListener('click', () => {
+                summaryCard.remove();
+              });
 
-            document.getElementById('tracker-status').textContent =
-              `⏸️ Paused. NoScroll app is in the foreground.`;
-
-            console.log(`⏸️ Timer paused (NoScroll app in foreground)`);
-        }
-      } else {
-        // ✅ State: NoScroll App is in the BACKGROUND (User is likely in the target app)
-        if (isPaused) { // Only resume if the session was previously paused
-            if (pauseStart) {
-              // Calculate the duration of the pause and add it to the total paused time
-              pausedSeconds += Math.floor((Date.now() - pauseStart) / 1000);
-              pauseStart = null;
+            } else {
+              showAlert("ℹ️ No summary data available.", "success");
             }
-            isPaused = false; // Set flag to resume timer counting
-            document.getElementById('tracker-status').textContent = 
-              `▶️ Session running, tracking usage of ${currentSelectedApp}.`;
-            console.log("▶️ Timer resumed (NoScroll app in background)");
+          } else {
+            showAlert("❌ Could not fetch summary", "error");
+          }
+        } catch (err) {
+          console.error(err);
+          showAlert("❌ Network or server error", "error");
+        } finally {
+          loadingOverlay.classList.add('hidden');
         }
+      });
+    });
+
+// --- App State Change: Pause/Resume Tracker ---
+let isPaused = false;
+let pauseStart = null;
+let pausedSeconds = 0;
+
+if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+  const { App } = window.Capacitor.Plugins;
+
+  App.addListener('appStateChange', ({ isActive }) => {
+    if (isActive) {
+      // ✅ App is foregrounded → PAUSE the timer
+      isPaused = true;
+      pauseStart = Date.now();
+      document.getElementById('tracker-status').textContent = `⏸️ Session is paused for ${currentSelectedApp}.`; // Correct with backticks ``
+    } else {
+      // ✅ App is backgrounded → RESUME the timer
+      if (pauseStart) {
+        pausedSeconds += Math.floor((Date.now() - pauseStart) / 1000);
+        pauseStart = null;
       }
+      isPaused = false;
+      document.getElementById('tracker-status').textContent = "▶️ Session running in background.";
     }
   });
 }
+
+
 </script>
 </body>
 </html>
