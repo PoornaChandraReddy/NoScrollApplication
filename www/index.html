@@ -279,7 +279,6 @@
   
 <script>
 // --- START: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY ---
-
 if (typeof window.Capacitor === "undefined" || !window.Capacitor.isNativePlatform?.()) {
   console.warn("🧩 Running in Web Mode - using mock Capacitor plugins");
 
@@ -293,12 +292,12 @@ if (typeof window.Capacitor === "undefined" || !window.Capacitor.isNativePlatfor
         canOpenUrl: async () => ({ value: false }),
         openUrl: async ({ url }) => console.warn(`Mock openUrl: ${url}`)
       },
-      LocalNotifications: undefined // Keep this undefined for proper fallback handling
+      LocalNotifications: undefined // Keep undefined for fallback
     }
   };
 }
 
-// Global exposure for older code compatibility
+// ✅ Global exposure for older code compatibility
 window.AppLauncher = window.Capacitor.Plugins.AppLauncher;
 window.App = window.Capacitor.Plugins.App;
 window.LocalNotifications = window.Capacitor.Plugins.LocalNotifications;
@@ -312,61 +311,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.Capacitor.Plugins.AppUsageMonitor = {
       requestPermissions: async () => {
         console.log("📱 Attempting to call native AppUsageMonitor.requestPermissions()");
-        // This will hit the native Java method if bridge is available
-        return await window.Capacitor.Plugins.AppUsageMonitor?.requestPermissions?.() || {};
+        return { status: "mock" };
       }
     };
   }
 });
 
 // --- MAIN APP INITIALIZATION (NON-BLOCKING) ---
-
-// 🎯 FIX 2: Added function for channel setup to ensure it runs
 async function setupNotificationChannel() {
-    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications) {
-        try {
-            // Re-creating the channel is idempotent (safe to call multiple times)
-            await window.Capacitor.Plugins.LocalNotifications.createChannel({
-                id: "alarm", // Ensure this ID is used consistently
-                name: "Alarm Notifications",
-                description: "Notifications that appear as heads-up alerts",
-                importance: 5,
-                sound: "alarm",
-                vibration: true,
-                visibility: "public",
-                lights: true
-            });
-            console.log("✅ Notification channel created/updated");
-        } catch (e) {
-            console.warn("⚠️ Failed to create channel:", e);
-        }
-
-        
-    } else {
-        console.warn("⚠️ LocalNotifictions plugin not available");
+  try {
+    if (!window.Capacitor.Plugins.LocalNotifications) {
+      console.warn("⚠️ LocalNotifications plugin not available");
+      return;
     }
-}
 
-async function initApp() {
-  console.log("🚀 Initializing NoScroll App (Non-Blocking)...");
-
-  
-  
-  // ✅ Attach start session button
-  const startSessionBtn = document.getElementById('start-session-btn');
-  if (startSessionBtn) {
-    startSessionBtn.addEventListener('click', startSessionHandler);
-    console.log("✅ Start Session button listener attached");
-  } else {
-    console.error("❌ startSessionBtn element not found!");
+    await window.Capacitor.Plugins.LocalNotifications.createChannel({
+      id: "alarm",
+      name: "Alarm Notifications",
+      description: "Notifications that appear as heads-up alerts",
+      importance: 5,
+      sound: "alarm",
+      vibration: true,
+      visibility: "public",
+      lights: true
+    });
+    console.log("✅ Notification channel created/updated");
+  } catch (e) {
+    console.warn("⚠️ Failed to create channel:", e);
   }
-
-  // ✅ Request App Usage / Overlay / Accessibility Permissions
-  await requestSystemPermissions();
-  console.log("✅ App initialization complete");
 }
 
-// --- SYSTEM PERMISSIONS REQUEST FUNCTION ---
 async function requestSystemPermissions() {
   try {
     const { AppUsageMonitor } = window.Capacitor.Plugins;
@@ -381,9 +355,8 @@ async function requestSystemPermissions() {
 
     if (result?.status === "already_granted" || result?.status === "all_permissions_granted") {
       console.log("✅ Ready to track apps!");
-	  // ✅ Local Notifications setup MUST happen before scheduling
-     await setupNotificationChannel(); 
-	  
+      // ✅ Setup channel after permissions granted
+      await setupNotificationChannel();
     } else if (result?.status === "pending_notification_permission") {
       console.log("🔔 Notification permission pending, please confirm on screen.");
     } else {
@@ -394,9 +367,24 @@ async function requestSystemPermissions() {
   }
 }
 
+async function initApp() {
+  console.log("🚀 Initializing NoScroll App (Non-Blocking)...");
+
+  const startSessionBtn = document.getElementById('start-session-btn');
+  if (startSessionBtn) {
+    startSessionBtn.addEventListener('click', startSessionHandler);
+    console.log("✅ Start Session button listener attached");
+  } else {
+    console.error("❌ startSessionBtn element not found!");
+  }
+
+  await requestSystemPermissions();
+  console.log("✅ App initialization complete");
+}
+
 document.addEventListener('DOMContentLoaded', initApp);
-// --- END MAIN APP INITIALIZATION ---
 </script>
+
 
 
 
