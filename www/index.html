@@ -911,44 +911,40 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
 
 
 // --- App State Change: Pause/Resume Tracker ---
+document.addEventListener('DOMContentLoaded', () => {
+  const AppPlugin = window.Capacitor?.Plugins?.App || window.Capacitor?.App;
 
-// The App plugin check is now conditional based on the global Capacitor object's contents
-// ✅ Universal check for Capacitor App plugin (works for v5 → v7+)
-const AppPlugin = window.Capacitor?.Plugins?.App || window.Capacitor?.App;
+  if (AppPlugin && typeof AppPlugin.addListener === 'function') {
+    AppPlugin.addListener('appStateChange', ({ isActive }) => {
+      if (timerInterval) {
+        const statusEl = document.getElementById('tracker-status');
+        if (!statusEl) return;
 
-if (AppPlugin && typeof AppPlugin.addListener === 'function') {
-  AppPlugin.addListener('appStateChange', ({ isActive }) => {
-    if (timerInterval) {
-      if (isActive) {
-        // ✅ Foreground → pause
-        if (!isPaused) {
-          isPaused = true;
-          pauseStart = Date.now();
-          const selectedApp = localStorage.getItem('selectedApp') || 'the selected app';
-          document.getElementById('tracker-status').textContent =
-            `⏸️ Paused while tracking of ${selectedApp}.`;
-          console.log("⏸️ Timer paused (NoScroll app in foreground)");
-        }
-      } else {
-        // ✅ Background → resume
-        if (isPaused) {
-          if (pauseStart) {
-            pausedSeconds += Math.floor((Date.now() - pauseStart) / 1000);
-            pauseStart = null;
+        if (isActive) {
+          if (!isPaused) {
+            isPaused = true;
+            pauseStart = Date.now();
+            const selectedApp = localStorage.getItem('selectedApp') || 'the selected app';
+            statusEl.textContent = `⏸️ Paused while tracking of ${selectedApp}.`;
+            console.log("⏸️ Timer paused (NoScroll app in foreground)");
           }
-          isPaused = false;
-          document.getElementById('tracker-status').textContent =
-            `▶️ Session running, tracking usage of ${currentSelectedApp}.`;
-          console.log("▶️ Timer resumed (NoScroll app in background)");
+        } else {
+          if (isPaused) {
+            if (pauseStart) {
+              pausedSeconds += Math.floor((Date.now() - pauseStart) / 1000);
+              pauseStart = null;
+            }
+            isPaused = false;
+            statusEl.textContent = `▶️ Session running, tracking usage of ${currentSelectedApp}.`;
+            console.log("▶️ Timer resumed (NoScroll app in background)");
+          }
         }
       }
-    }
-  });
-} else {
-  console.warn("⚠️ App plugin not available — pause/resume tracking disabled");
-}
-
-
+    });
+  } else {
+    console.warn("⚠️ App plugin not available — pause/resume tracking disabled");
+  }
+});
 </script>
 </body>
 </html>
