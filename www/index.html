@@ -339,6 +339,10 @@ async function setupNotificationChannel() {
   } catch (e) {
     console.warn("⚠️ Failed to create channel:", e);
   }
+  
+  // 👇  Add this right after
+const channels = await window.Capacitor.Plugins.LocalNotifications.listChannels();
+console.log("📡 Registered channels:", channels);
 }
 
 async function requestSystemPermissions() {
