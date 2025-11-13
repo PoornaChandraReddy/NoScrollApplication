@@ -909,6 +909,73 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
     });
 
 
+// =======================================================
+// 📱 APP USAGE MONITOR — Detect Foreground App Changes
+// =======================================================
+(async function setupAppUsageMonitor() {
+  console.log("🧩 Setting up AppUsageMonitor plugin listener...");
+
+  const { AppUsageMonitor } = window.Capacitor.Plugins;
+  if (!AppUsageMonitor) {
+    console.warn("⚠️ AppUsageMonitor plugin not found!");
+    return;
+  }
+
+  // These are the apps we’re monitoring
+  const appsToMonitor = [
+    "com.instagram.android",
+    "com.facebook.katana",
+    "com.google.android.youtube"
+  ];
+
+  try {
+    await AppUsageMonitor.startMonitoring({ packages: appsToMonitor });
+    console.log("✅ AppUsageMonitor started for:", appsToMonitor);
+  } catch (e) {
+    console.error("❌ Failed to start AppUsageMonitor:", e);
+    return;
+  }
+
+  // Listen for any monitored app’s state changes
+  AppUsageMonitor.addListener("appStateChange", (event) => {
+    const { packageName, state } = event;
+    console.log(`📲 [AppMonitor] ${packageName} → ${state}`);
+
+    if (!currentSelectedApp) return; // No session yet
+
+    // ✅ If the current selected app is now foreground → resume timer
+    if (state === "foreground" && packageName === getPackageName(currentSelectedApp)) {
+      if (isPaused) {
+        isPaused = false;
+        console.log(`▶️ Resuming timer for ${currentSelectedApp}`);
+        document.getElementById('tracker-status').textContent =
+          `▶️ Session resumed for ${currentSelectedApp}`;
+      }
+    }
+
+    // ⏸️ If any other app becomes foreground → pause timer
+    if (state === "foreground" && packageName !== getPackageName(currentSelectedApp)) {
+      if (!isPaused) {
+        isPaused = true;
+        pauseStart = Date.now();
+        console.log(`⏸️ Session paused — user switched to ${packageName}`);
+        document.getElementById('tracker-status').textContent =
+          `⏸️ Session paused (using ${packageName})`;
+      }
+    }
+  });
+
+  // Helper to map friendly names → package names
+  function getPackageName(appName) {
+    const map = {
+      Instagram: "com.instagram.android",
+      Facebook: "com.facebook.katana",
+      YouTube: "com.google.android.youtube"
+    };
+    return map[appName] || appName;
+  }
+})();
+
 
 // --- App State Change: Pause/Resume Tracker ---
 
