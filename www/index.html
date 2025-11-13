@@ -431,13 +431,17 @@ document.addEventListener('DOMContentLoaded', initApp);
     const endSessionBtn = document.getElementById('end-session-btn');
 	const socialAppSelect = document.getElementById('socialApp');
 
-    let startTime;
-    let timerInterval;
+   // let startTime;
+    //let timerInterval;
 	
     // 🎯 FIX 3: Global state variables for pause logic (moved from the bottom of the file)
     let isPaused = false;
     let pauseStart = null;
     let pausedSeconds = 0;
+	
+let timerInterval = null;
+let startTime = 0;
+let elapsedSeconds = 0;
 
 
     // --- Message Box Function ---
@@ -911,93 +915,59 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
 
 
 // --- App State Change: Pause/Resume Tracker ---
-
-// The App plugin check is now conditional based on the global Capacitor object's contents
-
-// Helper to safely read DOM element (avoid exceptions)
-function setTrackerStatus(text) {
-  try {
-    const el = document.getElementById('tracker-status');
-    if (el) el.textContent = text;
-  } catch (e) {
-    console.error("NoScrollDebug: failed to set tracker-status", e);
-  }
+function startTimer() {
+  if (timerInterval) return;
+  isPaused = false;
+  startTime = Date.now();
+  timerInterval = setInterval(() => {
+    elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+    // Update your timer display here, e.g.:
+    // timerDisplay.textContent = formatTime(elapsedSeconds);
+  }, 1000);
 }
 
-// ---------- Instrumented listener registration ----------
-console.log("NoScrollDebug: checking Capacitor + App plugin:", {
-  hasCapacitor: !!window.Capacitor,
-  hasPlugins: !!(window.Capacitor && window.Capacitor.Plugins),
-  appUnderPlugins: !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App),
-  appTopLevel: !!window.Capacitor?.App
+function pauseTimer() {
+  if (!timerInterval) return;
+  clearInterval(timerInterval);
+  timerInterval = null;
+  isPaused = true;
+  // Optionally update UI here or let appStateChange handler do it
+}
+
+function resumeTimer() {
+  if (timerInterval || !isPaused) return;
+  isPaused = false;
+  startTime = Date.now() - elapsedSeconds * 1000;
+  timerInterval = setInterval(() => {
+    elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+    // Update your timer display here
+  }, 1000);
+}
+
+document.addEventListener('deviceready', () => {
+  const App = window.Capacitor?.Plugins?.App || window.Capacitor?.App;
+  if (!App || typeof App.addListener !== 'function') {
+    console.warn('App plugin not available');
+    return;
+  }
+
+  App.addListener('appStateChange', ({ isActive }) => {
+    if (isActive) {
+      // Foreground → pause
+      pauseTimer();
+      const statusEl = document.getElementById('tracker-status');
+      if (statusEl) statusEl.textContent = `⏸️ Session paused for ${currentSelectedApp}.`;
+      console.log('Timer paused (App in foreground)');
+    } else {
+      // Background → resume
+      resumeTimer();
+      const statusEl = document.getElementById('tracker-status');
+      if (statusEl) statusEl.textContent = '▶️ Session running in background.';
+      console.log('Timer resumed (App in background)');
+    }
+  });
 });
 
-const AppCandidate = window.Capacitor?.Plugins?.App || window.Capacitor?.App || window.App;
-if (AppCandidate && typeof AppCandidate.addListener === 'function') {
-  console.log("NoScrollDebug: App plugin candidate found -> attaching listener", { AppCandidate });
-
-  AppCandidate.addListener('appStateChange', (event) => {
-    // Very first log when event arrives
-    console.log("NoScrollDebug:eventReceived appStateChange rawEvent:", event);
-
-    // Read values we want to inspect
-    const isActive = event?.isActive;
-    console.log("NoScrollDebug: currentVariables BEFORE checks", {
-      timerIntervalExists: !!timerInterval,
-      timerIntervalValue: timerInterval,       // careful: may be huge, but we want to see if defined
-      isActive,
-      isPaused,
-      pauseStart,
-      pausedSeconds,
-      currentSelectedApp
-    });
-
-    // Now do the same logic but log the branch taken
-    if (timerInterval) {
-      console.log("NoScrollDebug: timerInterval truthy -> proceeding with pause/resume logic");
-      if (isActive) {
-        console.log("NoScrollDebug: branch -> APP FOREGROUND (should PAUSE)");
-        if (!isPaused) {
-          console.log("NoScrollDebug: going to pause — recording pauseStart and setting isPaused = true");
-          isPaused = true;
-          pauseStart = Date.now();
-          setTrackerStatus(`⏸️ Session is paused for ${currentSelectedApp || 'the selected app'}.`);
-        } else {
-          console.log("NoScrollDebug: already paused, skipping");
-        }
-      } else {
-        console.log("NoScrollDebug: branch -> APP BACKGROUND (should RESUME)");
-        if (isPaused) {
-          console.log("NoScrollDebug: going to resume — computing pausedSeconds");
-          if (pauseStart) {
-            const delta = Math.floor((Date.now() - pauseStart) / 1000);
-            pausedSeconds += delta;
-            console.log("NoScrollDebug: pauseStart delta (s):", delta, "new pausedSeconds:", pausedSeconds);
-            pauseStart = null;
-          } else {
-            console.log("NoScrollDebug: pauseStart missing, skipping delta add");
-          }
-          isPaused = false;
-          setTrackerStatus(`▶️ Session running, tracking usage of ${currentSelectedApp || 'the selected app'}.`);
-        } else {
-          console.log("NoScrollDebug: was not paused, nothing to resume");
-        }
-      }
-    } else {
-      console.log("NoScrollDebug: timerInterval falsy -> ignoring appStateChange");
-    }
-
-    // Log final state after branch
-    console.log("NoScrollDebug: currentVariables AFTER checks", {
-      isPaused,
-      pauseStart,
-      pausedSeconds
-    });
-  });
-
-} else {
-  console.warn("NoScrollDebug: App plugin NOT available at script run-time. Candidate:", !!AppCandidate);
-}
 
 </script>
 </body>
