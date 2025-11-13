@@ -914,7 +914,7 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
 
 (async function setupAppStateListener() {
   console.log("🟡 [NoScrollDebug] Setting up app state tracking...");
-
+console.log("[NoScrollDebug] Capacitor object:", window.Capacitor);
   // Wait for Capacitor bridge to initialize
   while (!window.Capacitor?.Plugins?.App) {
     console.warn("⚠️ [NoScrollDebug] App plugin not ready yet, retrying in 500ms...");
