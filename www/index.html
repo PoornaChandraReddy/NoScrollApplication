@@ -431,17 +431,13 @@ document.addEventListener('DOMContentLoaded', initApp);
     const endSessionBtn = document.getElementById('end-session-btn');
 	const socialAppSelect = document.getElementById('socialApp');
 
-   // let startTime;
-    //let timerInterval;
+    let startTime;
+    let timerInterval;
 	
     // 🎯 FIX 3: Global state variables for pause logic (moved from the bottom of the file)
     let isPaused = false;
     let pauseStart = null;
     let pausedSeconds = 0;
-	
-let timerInterval = null;
-let startTime = 0;
-let elapsedSeconds = 0;
 
 
     // --- Message Box Function ---
@@ -915,59 +911,48 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
 
 
 // --- App State Change: Pause/Resume Tracker ---
-function startTimer() {
-  if (timerInterval) return;
-  isPaused = false;
-  startTime = Date.now();
-  timerInterval = setInterval(() => {
-    elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
-    // Update your timer display here, e.g.:
-    // timerDisplay.textContent = formatTime(elapsedSeconds);
-  }, 1000);
-}
 
-function pauseTimer() {
-  if (!timerInterval) return;
-  clearInterval(timerInterval);
-  timerInterval = null;
-  isPaused = true;
-  // Optionally update UI here or let appStateChange handler do it
-}
+(async function setupAppStateListener() {
+  console.log("🟡 [NoScrollDebug] Setting up app state tracking...");
 
-function resumeTimer() {
-  if (timerInterval || !isPaused) return;
-  isPaused = false;
-  startTime = Date.now() - elapsedSeconds * 1000;
-  timerInterval = setInterval(() => {
-    elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
-    // Update your timer display here
-  }, 1000);
-}
-
-document.addEventListener('deviceready', () => {
-  const App = window.Capacitor?.Plugins?.App || window.Capacitor?.App;
-  if (!App || typeof App.addListener !== 'function') {
-    console.warn('App plugin not available');
-    return;
+  // Wait for Capacitor bridge to initialize
+  while (!window.Capacitor?.Plugins?.App) {
+    console.warn("⚠️ [NoScrollDebug] App plugin not ready yet, retrying in 500ms...");
+    await new Promise(r => setTimeout(r, 500));
   }
 
+  const App = window.Capacitor.Plugins.App;
+  console.log("✅ [NoScrollDebug] App plugin ready, attaching listener...");
+
   App.addListener('appStateChange', ({ isActive }) => {
-    if (isActive) {
-      // Foreground → pause
-      pauseTimer();
-      const statusEl = document.getElementById('tracker-status');
-      if (statusEl) statusEl.textContent = `⏸️ Session paused for ${currentSelectedApp}.`;
-      console.log('Timer paused (App in foreground)');
-    } else {
-      // Background → resume
-      resumeTimer();
-      const statusEl = document.getElementById('tracker-status');
-      if (statusEl) statusEl.textContent = '▶️ Session running in background.';
-      console.log('Timer resumed (App in background)');
+    console.log(`🔄 [NoScrollDebug] appStateChange fired → isActive = ${isActive}`);
+
+    if (timerInterval) {
+      console.log(`[NoScrollDebug] timerInterval active → isPaused=${isPaused}`);
+
+      if (isActive) {
+        if (!isPaused) {
+          isPaused = true;
+          pauseStart = Date.now();
+          document.getElementById('tracker-status').textContent =
+            `⏸️ Session paused for ${currentSelectedApp}.`;
+          console.log(`[NoScrollDebug] Timer paused`);
+        }
+      } else {
+        if (isPaused) {
+          if (pauseStart) {
+            pausedSeconds += Math.floor((Date.now() - pauseStart) / 1000);
+            pauseStart = null;
+          }
+          isPaused = false;
+          document.getElementById('tracker-status').textContent =
+            "▶️ Session running in background.";
+          console.log(`[NoScrollDebug] Timer resumed`);
+        }
+      }
     }
   });
-});
-
+})();
 
 </script>
 </body>
