@@ -371,6 +371,95 @@ async function requestSystemPermissions() {
   }
 }
 
+    // 🚀 START SESSION BUTTON LISTENER (CRITICAL FIX: MOVED OUT OF SHOWPAGE)
+ async function startSessionHandler() {
+  const timeLimitInMinutes = parseInt(timeLimitInput.value);
+  const selectedApp = socialAppSelect.value;
+  localStorage.setItem('selectedApp', selectedApp);
+  currentSelectedApp = selectedApp;
+  console.log("selected APP", currentSelectedApp);
+
+  document.getElementById('selected-app-name').textContent = selectedApp;
+
+  if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
+    showAlert('Please enter a valid time limit.', 'error');
+    return;
+  }
+
+  showPage('tracker-card');
+
+  // ---- timer init (drift-free) ----
+  accumulatedTime = 0;
+  lastTick = performance.now();
+  isPaused = false;
+  totalLimitSeconds = timeLimitInMinutes * 60;
+  notifScheduled = false;
+
+  // cancel any previous RAF loop
+  if (rafId) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+
+  // ---- tick loop ----
+  function tick() {
+    if (!isPaused) {
+      const now = performance.now();
+      const delta = (now - lastTick) / 1000; // seconds
+      accumulatedTime += delta;
+      lastTick = now;
+
+      const remaining = Math.max(0, Math.ceil(totalLimitSeconds - accumulatedTime));
+      const minutes = Math.floor(remaining / 60);
+      const seconds = remaining % 60;
+
+      timerDisplay.textContent = `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
+
+      if (remaining <= 60 && remaining > 0 && !notifScheduled) {
+        notifScheduled = true;
+        scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp);
+      }
+
+      if (remaining <= 0) {
+        // time reached
+        scheduleSessionEndNotification(selectedApp, timeLimitInMinutes);
+        endSession(true);
+        return; // stop ticking
+      }
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+
+  rafId = requestAnimationFrame(tick);
+
+  // launch app after timer starts
+  try {
+    await openApp(selectedApp);
+  } catch (e) {
+    console.error(`${selectedApp} launch failed:`, e);
+  }
+}
+
+
+function pauseTimer() {
+  if (!isPaused) {
+    isPaused = true;
+    console.log("⏸️ Timer paused");
+    document.getElementById('tracker-status').textContent = `⏸️ Session paused (user left ${currentSelectedApp || 'app'})`;
+  }
+}
+
+function resumeTimer() {
+  if (isPaused) {
+    isPaused = false;
+    // prevent delta from including pause duration
+    lastTick = performance.now();
+    console.log("▶️ Timer resumed");
+    document.getElementById('tracker-status').textContent = `▶️ Session resumed for ${currentSelectedApp}`;
+  }
+}
+
+
 async function initApp() {
   console.log("🚀 Initializing NoScroll App (Non-Blocking)...");
 
@@ -744,23 +833,7 @@ let resumeTimeout = null;    // debounce for resume
 
 
 
-function pauseTimer() {
-  if (!isPaused) {
-    isPaused = true;
-    console.log("⏸️ Timer paused");
-    document.getElementById('tracker-status').textContent = `⏸️ Session paused (user left ${currentSelectedApp || 'app'})`;
-  }
-}
 
-function resumeTimer() {
-  if (isPaused) {
-    isPaused = false;
-    // prevent delta from including pause duration
-    lastTick = performance.now();
-    console.log("▶️ Timer resumed");
-    document.getElementById('tracker-status').textContent = `▶️ Session resumed for ${currentSelectedApp}`;
-  }
-}
 	
 	
 	
@@ -814,76 +887,9 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
     }
 }
 
-   let currentSelectedApp = null;
+  
  
-    // 🚀 START SESSION BUTTON LISTENER (CRITICAL FIX: MOVED OUT OF SHOWPAGE)
- async function startSessionHandler() {
-  const timeLimitInMinutes = parseInt(timeLimitInput.value);
-  const selectedApp = socialAppSelect.value;
-  localStorage.setItem('selectedApp', selectedApp);
-  currentSelectedApp = selectedApp;
-  console.log("selected APP", currentSelectedApp);
 
-  document.getElementById('selected-app-name').textContent = selectedApp;
-
-  if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
-    showAlert('Please enter a valid time limit.', 'error');
-    return;
-  }
-
-  showPage('tracker-card');
-
-  // ---- timer init (drift-free) ----
-  accumulatedTime = 0;
-  lastTick = performance.now();
-  isPaused = false;
-  totalLimitSeconds = timeLimitInMinutes * 60;
-  notifScheduled = false;
-
-  // cancel any previous RAF loop
-  if (rafId) {
-    cancelAnimationFrame(rafId);
-    rafId = null;
-  }
-
-  // ---- tick loop ----
-  function tick() {
-    if (!isPaused) {
-      const now = performance.now();
-      const delta = (now - lastTick) / 1000; // seconds
-      accumulatedTime += delta;
-      lastTick = now;
-
-      const remaining = Math.max(0, Math.ceil(totalLimitSeconds - accumulatedTime));
-      const minutes = Math.floor(remaining / 60);
-      const seconds = remaining % 60;
-
-      timerDisplay.textContent = `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
-
-      if (remaining <= 60 && remaining > 0 && !notifScheduled) {
-        notifScheduled = true;
-        scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp);
-      }
-
-      if (remaining <= 0) {
-        // time reached
-        scheduleSessionEndNotification(selectedApp, timeLimitInMinutes);
-        endSession(true);
-        return; // stop ticking
-      }
-    }
-    rafId = requestAnimationFrame(tick);
-  }
-
-  rafId = requestAnimationFrame(tick);
-
-  // launch app after timer starts
-  try {
-    await openApp(selectedApp);
-  } catch (e) {
-    console.error(`${selectedApp} launch failed:`, e);
-  }
-}
  
 
 
