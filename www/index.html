@@ -982,6 +982,7 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
 try {
     // 💥 SAFE PLUGIN ACCESS
     const AppUsageMonitor = window.Capacitor?.Plugins?.AppUsageMonitor;
+	console.log("Available methods on AppUsageMonitor:", Object.keys(AppUsageMonitor));
     if (!AppUsageMonitor) {
         console.error("❌ AppUsageMonitor plugin not loaded yet");
         showAlert("App still loading — try again in 1 second!", "error");
