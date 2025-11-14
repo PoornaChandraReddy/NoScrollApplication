@@ -431,13 +431,19 @@ document.addEventListener('DOMContentLoaded', initApp);
     const endSessionBtn = document.getElementById('end-session-btn');
 	const socialAppSelect = document.getElementById('socialApp');
 
-    let startTime;
-    let timerInterval;
+   
 	
     // 🎯 FIX 3: Global state variables for pause logic (moved from the bottom of the file)
-    let isPaused = false;
-    let pauseStart = null;
-    let pausedSeconds = 0;
+    let sessionStart = null;       // When the session actually started
+    
+	let accumulatedTime = 0;     // seconds (float)
+let lastTick = 0;            // performance.now() timestamp in ms
+let isPaused = true;         // starts paused until session starts
+let rafId = null;            // requestAnimationFrame id
+let totalLimitSeconds = 0;   // session limit (secs)
+let notifScheduled = false;  // 1-minute warning flag
+let currentSelectedApp = null;
+let resumeTimeout = null;    // debounce for resume
 
 
     // --- Message Box Function ---
@@ -507,26 +513,31 @@ document.addEventListener('DOMContentLoaded', initApp);
     
     // Main End Session Logic
     function endSession(isAutoEnd) {
-      clearInterval(timerInterval);
-      const endTime = Date.now();
-      // Use global startTime and timeLimitInput
-      const elapsedTimeInSeconds = Math.floor((endTime - startTime) / 1000) + pausedSeconds; // Use adjusted time
+  // stop RAF loop
+  if (rafId) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
 
-      const timeLimitInMinutes = parseInt(timeLimitInput.value);
-      const timeSpentInMinutes = Math.ceil(elapsedTimeInSeconds / 60);
+  // final elapsed seconds (rounded up)
+  const elapsedTimeInSeconds = Math.ceil(accumulatedTime);
 
-      // Log the usage
-      logUsage(timeLimitInMinutes, elapsedTimeInSeconds);
+  const timeLimitInMinutes = parseInt(timeLimitInput.value) || 0;
+  const timeSpentInMinutes = Math.ceil(elapsedTimeInSeconds / 60);
 
-      // Show correct card
-      if (isAutoEnd) {
-        showPage('limit-reached-card');
-      } else {
-        document.getElementById('summary-limit').textContent = timeLimitInMinutes;
-        document.getElementById('summary-spent').textContent = timeSpentInMinutes;
-        showPage('session-summary-card');
-      }
-    }
+  // Log the usage
+  logUsage(timeLimitInMinutes, elapsedTimeInSeconds);
+
+  // Show correct card
+  if (isAutoEnd) {
+    showPage('limit-reached-card');
+  } else {
+    document.getElementById('summary-limit').textContent = timeLimitInMinutes;
+    document.getElementById('summary-spent').textContent = timeSpentInMinutes;
+    showPage('session-summary-card');
+  }
+}
+
 	
 	// --- Instagram Launcher ---
     async function openApp(appName) {
@@ -729,6 +740,30 @@ document.addEventListener('DOMContentLoaded', initApp);
       });
     });
 	
+	
+
+
+
+function pauseTimer() {
+  if (!isPaused) {
+    isPaused = true;
+    console.log("⏸️ Timer paused");
+    document.getElementById('tracker-status').textContent = `⏸️ Session paused (user left ${currentSelectedApp || 'app'})`;
+  }
+}
+
+function resumeTimer() {
+  if (isPaused) {
+    isPaused = false;
+    // prevent delta from including pause duration
+    lastTick = performance.now();
+    console.log("▶️ Timer resumed");
+    document.getElementById('tracker-status').textContent = `▶️ Session resumed for ${currentSelectedApp}`;
+  }
+}
+	
+	
+	
 // 🚨 2. FINAL TIME LIMIT REACHED NOTIFICATION
 async function scheduleSessionEndNotification(selectedApp, timeLimitInMinutes) {
   try {
@@ -782,7 +817,7 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
    let currentSelectedApp = null;
  
     // 🚀 START SESSION BUTTON LISTENER (CRITICAL FIX: MOVED OUT OF SHOWPAGE)
-    async function startSessionHandler() {
+ async function startSessionHandler() {
   const timeLimitInMinutes = parseInt(timeLimitInput.value);
   const selectedApp = socialAppSelect.value;
   localStorage.setItem('selectedApp', selectedApp);
@@ -790,65 +825,67 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
   console.log("selected APP", currentSelectedApp);
 
   document.getElementById('selected-app-name').textContent = selectedApp;
+
   if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
-    showAlert('Please enter a valid time limit.', 'error'); // Changed alert to showAlert
+    showAlert('Please enter a valid time limit.', 'error');
     return;
   }
 
   showPage('tracker-card');
-  // 🎯 Reset pause state when starting a new session
-  pausedSeconds = 0; 
-  pauseStart = null;
-  isPaused = false; 
 
-  startTime = Date.now();
-  const timeLimitInSeconds = timeLimitInMinutes * 60;
-  let notifScheduled = false;
-  let endNotifScheduled = false;
-  clearInterval(timerInterval);
+  // ---- timer init (drift-free) ----
+  accumulatedTime = 0;
+  lastTick = performance.now();
+  isPaused = false;
+  totalLimitSeconds = timeLimitInMinutes * 60;
+  notifScheduled = false;
 
-  timerInterval = setInterval(() => {
-    if (!isPaused) { // Check the new global isPaused flag
-      // Calculate elapsed time correctly by adding previously paused time
-      const elapsedTime = Math.floor((Date.now() - startTime) / 1000) + pausedSeconds; 
-      const remaining = timeLimitInSeconds - elapsedTime;
+  // cancel any previous RAF loop
+  if (rafId) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+
+  // ---- tick loop ----
+  function tick() {
+    if (!isPaused) {
+      const now = performance.now();
+      const delta = (now - lastTick) / 1000; // seconds
+      accumulatedTime += delta;
+      lastTick = now;
+
+      const remaining = Math.max(0, Math.ceil(totalLimitSeconds - accumulatedTime));
       const minutes = Math.floor(remaining / 60);
       const seconds = remaining % 60;
 
-      timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      timerDisplay.textContent = `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
 
-
-// 🟡 Trigger the 1-minute warning
       if (remaining <= 60 && remaining > 0 && !notifScheduled) {
         notifScheduled = true;
-        if (window.LocalNotifications) {
-          // Schedule the notification to fire immediately upon hitting the 60-second mark
-          scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp);
-        } else {
-          console.warn("⚠️ LocalNotifications object is missing.");
-        }
+        scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp);
       }
-	  
-	  // 🟢 When time’s up
+
       if (remaining <= 0) {
-        clearInterval(timerInterval);
-		if (!endNotifScheduled) {
-          endNotifScheduled = true;
-          scheduleSessionEndNotification(selectedApp, timeLimitInMinutes);
-        }
+        // time reached
+        scheduleSessionEndNotification(selectedApp, timeLimitInMinutes);
         endSession(true);
+        return; // stop ticking
       }
     }
-  }, 1000);
+    rafId = requestAnimationFrame(tick);
+  }
 
+  rafId = requestAnimationFrame(tick);
+
+  // launch app after timer starts
   try {
-    // Note: If you want to use the native Android package name for app launching, 
-    // you should pass that (e.g., 'com.instagram.android') instead of the friendly name ('Instagram')
-    await openApp(selectedApp); 
+    await openApp(selectedApp);
   } catch (e) {
     console.error(`${selectedApp} launch failed:`, e);
   }
 }
+ 
+
 
 
 
@@ -930,40 +967,48 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
 
   try {
     await AppUsageMonitor.startMonitoring({ packages: appsToMonitor });
-    console.log("✅ AppUsageMonitor started for:", appsToMonitor);
+    console.log("✅ AppUsageMonitor started for:	", appsToMonitor);
   } catch (e) {
     console.error("❌ Failed to start AppUsageMonitor:", e);
     return;
   }
 
   // Listen for any monitored app’s state changes
-  AppUsageMonitor.addListener("appStateChange", (event) => {
-    const { packageName, state } = event;
-    console.log(`📲 [AppMonitor] ${packageName} → ${state}`);
+ // 🔔 Listen for ANY foreground change (includes Home, WhatsApp, etc.)
+ 
+ let resumeTimeout = null;
 
-    if (!currentSelectedApp) return; // No session yet
+AppUsageMonitor.addListener("foregroundChange", (event) => {
+  const pkg = event.packageName;
+  const selectedPkg = getPackageName(currentSelectedApp);
 
-    // ✅ If the current selected app is now foreground → resume timer
-    if (state === "foreground" && packageName === getPackageName(currentSelectedApp)) {
-      if (isPaused) {
-        isPaused = false;
-        console.log(`▶️ Resuming timer for ${currentSelectedApp}`);
-        document.getElementById('tracker-status').textContent =
-          `▶️ Session resumed for ${currentSelectedApp}`;
-      }
-    }
+  // ✔️ If selected app is foreground → wait 300ms before resuming timer
+  // earlier code change to call functions
+if (pkg === selectedPkg) {
+  clearTimeout(resumeTimeout);
+  resumeTimeout = setTimeout(() => {
+    if (pkg === selectedPkg) resumeTimer();
+  }, 300);
+  return;
+}
+if (pkg !== selectedPkg) {
+  clearTimeout(resumeTimeout);
+  pauseTimer();
+}
 
-    // ⏸️ If any other app becomes foreground → pause timer
-    if (state === "foreground" && packageName !== getPackageName(currentSelectedApp)) {
-      if (!isPaused) {
-        isPaused = true;
-        pauseStart = Date.now();
-        console.log(`⏸️ Session paused — user switched to ${packageName}`);
-        document.getElementById('tracker-status').textContent =
-          `⏸️ Session paused (using ${packageName})`;
-      }
-    }
-  });
+
+  // ✔️ ANY other situation → pause immediately
+  if (!isPaused) {
+    isPaused = true;
+    pauseStart = Date.now();
+    clearTimeout(resumeTimeout);
+    document.getElementById("tracker-status").textContent =
+      `⏸️ Paused — switched to ${pkg}`;
+    console.log("⏸️ Paused immediately");
+  }
+});
+
+
 
   // Helper to map friendly names → package names
   function getPackageName(appName) {
@@ -980,46 +1025,38 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
 // --- App State Change: Pause/Resume Tracker ---
 
 (async function setupAppStateListener() {
-  console.log("🟡 [NoScrollDebug] Setting up app state tracking...");
-console.log("[NoScrollDebug] Capacitor object:", window.Capacitor);
-  // Wait for Capacitor bridge to initialize
+  console.log("🟡 [NoScroll] Initializing appStateChange listener…");
+
+  // Wait for App plugin readiness
   while (!window.Capacitor?.Plugins?.App) {
-    console.warn("⚠️ [NoScrollDebug] App plugin not ready yet, retrying in 500ms...");
-    await new Promise(r => setTimeout(r, 500));
+    console.warn("⏳ App plugin not ready… retrying");
+    await new Promise(r => setTimeout(r, 300));
   }
 
   const App = window.Capacitor.Plugins.App;
-  console.log("✅ [NoScrollDebug] App plugin ready, attaching listener...");
+  console.log("✅ App plugin ready — listener attached.");
 
-  App.addListener('appStateChange', ({ isActive }) => {
-    console.log(`🔄 [NoScrollDebug] appStateChange fired → isActive = ${isActive}`);
+  App.addListener("appStateChange", ({ isActive }) => {
+    console.log(`🔄 appStateChange → isActive=${isActive}`);
 
-    if (timerInterval) {
-      console.log(`[NoScrollDebug] timerInterval active → isPaused=${isPaused}`);
+    // ➜ If NoScroll app comes to FOREGROUND → PAUSE session
+    if (isActive) {
+      console.log("📱 NoScroll foreground → pausing timer");
+      pauseTimer();
 
-      if (isActive) {
-        if (!isPaused) {
-          isPaused = true;
-          pauseStart = Date.now();
-          document.getElementById('tracker-status').textContent =
-            `⏸️ Session paused for ${currentSelectedApp}.`;
-          console.log(`[NoScrollDebug] Timer paused`);
-        }
-      } else {
-        if (isPaused) {
-          if (pauseStart) {
-            pausedSeconds += Math.floor((Date.now() - pauseStart) / 1000);
-            pauseStart = null;
-          }
-          isPaused = false;
-          document.getElementById('tracker-status').textContent =
-            "▶️ Session running in background.";
-          console.log(`[NoScrollDebug] Timer resumed`);
-        }
+      if (currentSelectedApp) {
+        document.getElementById("tracker-status").textContent =
+          `⏸️ Session paused for ${currentSelectedApp}`;
       }
+      return;
     }
+
+    // ➜ If NoScroll app goes BACKGROUND → DO NOTHING HERE
+    // Resume MUST be handled ONLY by foregroundChange listener!
+    console.log("📤 NoScroll background → waiting for foregroundChange event");
   });
 })();
+
 
 </script>
 </body>
