@@ -406,6 +406,21 @@ console.log("Script1 loaded (permissions & bridges ready)");
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   console.log("Script2: DOMContentLoaded — initializing UI + timer");
+  
+  // Get base API URL (ngrok or localhost)
+   const API_BASE_URL = "https://noscrollapplication.onrender.com";
+   console.log("Using API:", API_BASE_URL);
+  
+  const messages = [
+    "👏 Keep it up! You're building healthy habits.",
+    "🌟 Awesome! Stay consistent and you’ll see results.",
+    "🔥 Great discipline today!",
+    "💪 Strong work! Balance is everything."
+  ];
+
+  function getRandomMessage() {
+    return messages[Math.floor(Math.random() * messages.length)];
+  }
 
   // ---------------- DOM refs (adjust ids if yours differ) ----------------
   const timerDisplay = document.getElementById('timer-display');
