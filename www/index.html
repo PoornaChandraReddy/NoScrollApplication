@@ -415,6 +415,22 @@ document.addEventListener("DOMContentLoaded", () => {
   const endSessionBtn = document.getElementById('end-session-btn');
   const trackerStatus = document.getElementById('tracker-status');
   const loadingOverlay = document.getElementById('loading-overlay');
+  
+  
+  
+  const setupCard = document.getElementById('setup-card');
+    const timeLimitCard = document.getElementById('time-limit-card');
+	//const pullSummaryBtn = document.getElementById('pull-summary-btn');
+    const summaryCard = document.getElementById('summary-card');
+    const closeSummaryBtn = document.getElementById('close-summary');
+    const trackerCard = document.getElementById('tracker-card');
+    const limitReachedCard = document.getElementById('limit-reached-card');
+    
+    const messageBox = document.getElementById('message-box');
+	
+	const setupForm = document.getElementById('setup-form');
+    const userTypeRadios = document.getElementsByName('userType');
+    const parentFieldsDiv = document.getElementById('parent-fields');
 
   // sanity logs
   if (!timerDisplay) console.error("❌ timer-display element not found");
@@ -432,6 +448,411 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // expose some read-only debugging
   window._debugTimerState = () => ({ accumulatedTime, lastTick, isPaused, totalLimitSeconds, currentSelectedApp });
+  
+  
+  // --- Message Box Function ---
+    function showAlert(message, type = 'success') {
+      if (!messageBox) {
+        alert(message); // fallback
+        return;
+      }
+      messageBox.textContent = message;
+      messageBox.className = 'message-box show ' + type;
+      setTimeout(() => messageBox.classList.remove('show'), 2500);
+    }
+	
+	
+	// --- Show Page Function ---
+    function showPage(pageId) {
+      const pages = [setupCard, timeLimitCard, trackerCard, limitReachedCard, document.getElementById('session-summary-card')];
+      
+      // Show motivational message if showing session summary
+      if (pageId === 'session-summary-card') {
+        const msgEl = document.querySelector('#session-summary-card p.text-green-600');
+        if (msgEl) msgEl.textContent = getRandomMessage();
+      }
+
+      pages.forEach(page => {
+        if (page.id === pageId) {
+          page.classList.remove('hidden');
+        } else {
+          page.classList.add('hidden');
+        }
+      });
+    }
+	
+	
+	// --- API Call: Log Usage ---
+    async function logUsage(timeLimit, timeSpentInSeconds) {
+      loadingOverlay.classList.remove('hidden');
+      const customerId = localStorage.getItem('customerId');
+      
+      const payload = {
+        action: "log_and_set_time",
+        customerId: customerId,
+        socialMediaApp: localStorage.getItem('selectedApp'), // Assuming the app name is static for simplicity
+        timeLimit: timeLimit,
+        timeSpent: timeSpentInSeconds,
+        usageDate: new Date().toISOString().split('T')[0] // 'YYYY-MM-DD'
+      };
+    
+      try {
+        const res = await fetch(API_BASE_URL + "/api/log-usage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const result = await res.json();
+    
+        if (res.ok && result.status === "success") {
+          showAlert('✅ Session ended. Usage log and time setting saved!', 'success');
+        } else {
+          showAlert(`❌ Error logging usage: ${result.message || 'Something went wrong'}`, 'error');
+        }
+      } catch (err) {
+        showAlert("❌ Network or API error during logging.", 'error');
+        console.error('Error logging usage:', err);
+      } finally {
+        loadingOverlay.classList.add('hidden');
+      }
+    }
+	
+	// Main End Session Logic
+    function endSession(isAutoEnd) {
+  // stop RAF loop
+  if (rafId) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+
+  // final elapsed seconds (rounded up)
+  const elapsedTimeInSeconds = Math.ceil(accumulatedTime);
+
+  const timeLimitInMinutes = parseInt(timeLimitInput.value) || 0;
+  const timeSpentInMinutes = Math.ceil(elapsedTimeInSeconds / 60);
+
+  // Log the usage
+  logUsage(timeLimitInMinutes, elapsedTimeInSeconds);
+
+  // Show correct card
+  if (isAutoEnd) {
+    showPage('limit-reached-card');
+  } else {
+    document.getElementById('summary-limit').textContent = timeLimitInMinutes;
+    document.getElementById('summary-spent').textContent = timeSpentInMinutes;
+    showPage('session-summary-card');
+  }
+}
+
+// --- Instagram Launcher ---
+    async function openApp(appName) {
+  // URLs for app + browser fallback
+  const APP_URLS = {
+    Instagram: { app: 'instagram://user?username=_', web: 'https://www.instagram.com/' },
+    Facebook:  { app: 'fb://', web: 'https://www.facebook.com/' },
+    YouTube:   { app: 'youtube://', web: 'https://www.youtube.com/' }
+  };
+
+  const urls = APP_URLS[appName] || APP_URLS["Instagram"];
+
+  try {
+    const canOpen = await window.AppLauncher.canOpenUrl({ url: urls.app });
+
+    if (canOpen.value) {
+      await window.AppLauncher.openUrl({ url: urls.app });
+    } else {
+      window.open(urls.web, '_blank');
+    }
+  } catch (e) {
+    console.error(`${appName} AppLauncher error, falling back to browser:`, e);
+    window.open(urls.web, '_blank');
+  }
+}
+
+
+ // 🔹 Chart rendering
+    let summaryChart;
+    function renderSummaryChart(data, canvasElement) {
+      const ctx = canvasElement.getContext('2d');
+
+      const labels = data.map(d => d.date);
+      const limits = data.map(d => d.timeLimit);
+      const spent = data.map(d => d.timeSpent);
+
+      const spentColors = spent.map((s, i) =>
+        s > limits[i] ? "rgba(239,68,68,0.9)" : "rgba(16,185,129,0.9)"
+      );
+
+      if (canvasElement.chart) {
+        canvasElement.chart.destroy();
+      }
+
+      canvasElement.chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: "Time Limit", data: limits, backgroundColor: "rgba(59,130,246,0.7)" },
+            { label: "Time Spent", data: spent, backgroundColor: spentColors }
+          ]
+        },
+        options: { responsive: true, plugins: { legend: { position: "bottom" } } }
+      });
+
+      const storyDiv = document.createElement("div");
+      storyDiv.className = "mt-3 text-sm text-gray-700 space-y-1";
+
+      let within = 0, over = 0;
+      data.forEach((d, i) => {
+        let line = `Date(${d.date}): Limit ${d.timeLimit} mins, Spent ${d.timeSpent} mins → `;
+        if (d.timeSpent > d.timeLimit) {
+          line += `❌ Overused by ${d.timeSpent - d.timeLimit} mins`;
+          over++;
+        } else {
+          line += `✅ Within limit`;
+          within++;
+        }
+        const p = document.createElement("p");
+        p.textContent = line;
+        storyDiv.appendChild(p);
+      });
+
+      const summary = document.createElement("p");
+      summary.className = "font-semibold mt-2";
+      summary.textContent = `Summary: ${within} days within limit, ${over} days overused`;
+      storyDiv.appendChild(summary);
+
+      const summaryCard = canvasElement.closest('.summary-card');
+      const oldStory = summaryCard.querySelector("#usage-story");
+      if (oldStory) oldStory.remove();
+      storyDiv.id = "usage-story";
+      summaryCard.appendChild(storyDiv);
+    }
+	
+	// =======================================================
+    // ⚙️ MAIN APP INITIALIZATION AND EVENT LISTENERS
+    // =======================================================
+
+    window.onload = async function() {
+      const customerId = localStorage.getItem('customerId');
+      const storedEmail = localStorage.getItem("email");
+
+      loadingOverlay.classList.remove('hidden');
+
+      if (customerId) {
+        // Existing user: Check daily usage
+        try {
+          const res = await fetch(API_BASE_URL + "/api/log-usage", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "check_usage", customerId: customerId }),
+          });
+          const result = await res.json();
+          if (res.ok && result.salesforce_response.usedToday) {
+            showAlert('😴 You have reached your daily time limit.', 'success');
+            showPage('limit-reached-card');
+          } else {
+            showAlert('👋 Welcome back! Please set your new time limit.', 'success');
+            showPage('time-limit-card');
+          }
+        } catch (err) {
+          showAlert("❌ Network or API error during usage check.", 'error');
+          showPage('time-limit-card'); // Fallback to allow use
+        }
+      } else if (storedEmail) {
+        // New user but has stored email: Try to recover customerId
+        try {
+          const res = await fetch(API_BASE_URL + "/api/log-usage", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "get_customer_by_email", email: storedEmail }),
+          });
+          const result = await res.json();
+          if (res.ok && result.status === "success" && result.salesforce_response) {
+            localStorage.setItem("customerId", result.salesforce_response.customerId);
+            showPage("time-limit-card");
+          } else {
+            showPage('setup-card');
+          }
+        } catch (err) {
+          console.error("❌ Error during email recovery", err);
+          showPage('setup-card');
+        }
+      } else {
+        showPage('setup-card'); 
+      }
+	
+      loadingOverlay.classList.add('hidden');
+    };
+	
+	
+	// --- Setup Form Submission (DOMContentLoad needed for this) ---
+    document.addEventListener("DOMContentLoaded", () => {
+      // Parent/Individual radio button logic
+      userTypeRadios.forEach(radio => {
+        radio.addEventListener('change', (event) => {
+          if (event.target.value === 'Parent') {
+            parentFieldsDiv.classList.remove('hidden');
+          } else {
+            parentFieldsDiv.classList.add('hidden');
+          }
+        });
+      });
+
+      setupForm.addEventListener("submit", async (e) => {
+        e.preventDefault(); 
+        loadingOverlay.classList.remove("hidden");
+
+        const formData = new FormData(setupForm);
+        const payload = {
+          action: "setup",
+          customerName: formData.get("customerName"),
+          email: formData.get("email"),
+          age: parseInt(formData.get("age")),
+          userType: formData.get("userType"),
+          
+        };
+
+        if (payload.userType === "Parent") {
+          payload.childName = formData.get("childName");
+          payload.childEmail = formData.get("childEmail");
+        }
+
+        try {
+          const res = await fetch(API_BASE_URL + "/api/log-usage", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          const result = await res.json();
+
+          if (res.ok && result.status === "success") {
+            const newCustomerId = result.salesforce_response.customerId;
+            const userEmail = result.salesforce_response.email;
+            localStorage.setItem("customerId", newCustomerId);
+            localStorage.setItem("email", userEmail);
+            showAlert("✅ Profile created successfully!", "success");
+            setTimeout(() => showPage("time-limit-card"), 500);
+          } else {
+            showAlert(`❌ ${result.message || "Something went wrong"}`, "error");
+          }
+        } catch (err) {
+          showAlert("❌ Network or server error", "error");
+          console.error(err);
+        } finally {
+          loadingOverlay.classList.add("hidden");
+        }
+      });
+    });
+	
+	// 🚨 2. FINAL TIME LIMIT REACHED NOTIFICATION
+async function scheduleSessionEndNotification(selectedApp, timeLimitInMinutes) {
+  try {
+    const funnyMessages = [
+      `🎯 ${selectedApp} time limit (${timeLimitInMinutes} min) reached!`,
+      "😎 Great discipline! You’re off duty for today — come back tomorrow stronger!",
+      "🚫 App closed — detox mode on! 📵",
+      "👏 You did it! Time’s up — go touch some grass 🌿",
+      "🌙 Session complete. Time to relax and recharge!"
+    ];
+
+    const randomMessage = funnyMessages[Math.floor(Math.random() * funnyMessages.length)];
+
+    await window.LocalNotifications.schedule({
+      notifications: [{
+        id: 2,
+        title: "🕒 Session Complete!",
+        body: randomMessage,
+        schedule: { at: new Date(Date.now() + 1000) }, // Fire instantly (1s delay for execution safety)
+        sound: "default",
+        channelId: "alarm",
+        vibrate: true
+      }]
+    });
+    console.log("✅ Session end notification scheduled!");
+  } catch (e) {
+    console.error("❌ Failed to schedule end notification:", e);
+  }
+}	
+	// Helper function to schedule the notification
+async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
+    try {
+        await window.LocalNotifications.schedule({
+            notifications: [{
+                id: 1,
+                title: "⏳ Time almost up!",
+                body: `Only 1 minute left in your ${timeLimitInMinutes}-minute session on ${selectedApp}! Stay focused 💪`,
+                schedule: { at: new Date(Date.now() + 1000) }, // Fire instantly
+                sound: "default",
+				channelId: "alarm", // match the new channel
+                sound: "alarm",
+                vibrate: true
+            }]
+        });
+        console.log("✅ 1-minute warning successfully scheduled!");
+    } catch (e) {
+        console.error("❌ Failed to schedule notification:", e);
+    }
+}
+
+
+// End Session Button
+    endSessionBtn.addEventListener('click', () => {
+      endSession(false); // Manually end session
+    });
+	
+	
+	// Summary Button Logic (Attached to all .pull-summary-btn)
+    document.querySelectorAll('.pull-summary-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const customerId = localStorage.getItem('customerId');
+        if (!customerId) {
+          showAlert("❌ No customer found. Please setup profile first.", "error");
+          return;
+        }
+
+        loadingOverlay.classList.remove('hidden');
+        try {
+          const res = await fetch(API_BASE_URL + "/api/log-usage", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "get_summary", customerId: customerId, days: 3 }),
+          });
+
+          const result = await res.json();
+
+          if (res.ok && result.status === "success") {
+            const sfResp = result.salesforce_response;
+            if (sfResp && sfResp.status === "success" && sfResp.data && sfResp.data.length > 0) {
+              
+              const template = document.getElementById('summary-template');
+              const clone = template.content.cloneNode(true);
+              const summaryCard = clone.querySelector('.summary-card');
+              const chartCanvas = clone.querySelector('.summary-chart');
+              
+              btn.insertAdjacentElement('afterend', summaryCard);
+
+              renderSummaryChart(sfResp.data, chartCanvas);
+
+              summaryCard.querySelector('.close-summary').addEventListener('click', () => {
+                summaryCard.remove();
+              });
+
+            } else {
+              showAlert("ℹ️ No summary data available.", "success");
+            }
+          } else {
+            showAlert("❌ Could not fetch summary", "error");
+          }
+        } catch (err) {
+          console.error(err);
+          showAlert("❌ Network or server error", "error");
+        } finally {
+          loadingOverlay.classList.add('hidden');
+        }
+      });
+    });
 
   // ---------------- pause/resume implementations used by Script1 bridge ----------------
   function pauseTimerLocal() {
