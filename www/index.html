@@ -1003,46 +1003,59 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
 
 
 // =====================================
-// ⭐ NATIVE TIMER EVENT LISTENERS
+// ⭐ SAFE NATIVE TIMER EVENT LISTENERS
 // =====================================
+(async function setupNativeTimerListeners() {
+  console.log("⏳ Waiting for AppUsageMonitor plugin...");
 
-// 1) Timer ticking (every second)
-AppUsageMonitor.addListener("timerTick", (ev) => {
-  const { remainingSeconds } = ev;
-
-  const minutes = Math.floor(remainingSeconds / 60);
-  const seconds = remainingSeconds % 60;
-
-  if (timerDisplay) {
-    timerDisplay.textContent =
-      `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
+  // WAIT until plugin is actually registered by Capacitor
+  while (!window.Capacitor?.Plugins?.AppUsageMonitor) {
+    await new Promise(res => setTimeout(res, 150));
   }
-});
 
-// 2) Native pause (left selected app)
-AppUsageMonitor.addListener("timerPaused", () => {
-  if (trackerStatus) {
-    trackerStatus.textContent = `⏸️ Paused — using other app`;
-  }
-});
+  const AppUsageMonitor = window.Capacitor.Plugins.AppUsageMonitor;
+  console.log("✅ AppUsageMonitor ready — attaching listeners...");
 
-// 3) Native resume (returned to selected app)
-AppUsageMonitor.addListener("timerResumed", (ev) => {
-  if (trackerStatus) {
-    trackerStatus.textContent = `▶️ Resumed for ${ev.packageName}`;
-  }
-});
+  // 1) Timer ticking every second
+  AppUsageMonitor.addListener("timerTick", (ev) => {
+    const { remainingSeconds } = ev;
+    const minutes = Math.floor(remainingSeconds / 60);
+    const seconds = remainingSeconds % 60;
 
-// 4) Session ended (time limit reached)
-AppUsageMonitor.addListener("sessionEnded", (ev) => {
-  console.log("🔚 Session Ended:", ev);
+    if (timerDisplay) {
+      timerDisplay.textContent =
+        `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
+    }
+  });
 
-  if (ev.reachedLimit) {
-    endSession(true);
-  } else {
-    endSession(false);
-  }
-});
+  // 2) Native pause
+  AppUsageMonitor.addListener("timerPaused", () => {
+    if (trackerStatus) {
+      trackerStatus.textContent = "⏸️ Paused — using other app";
+    }
+  });
+
+  // 3) Native resume
+  AppUsageMonitor.addListener("timerResumed", (ev) => {
+    if (trackerStatus) {
+      trackerStatus.textContent = `▶️ Resumed for ${ev.packageName}`;
+    }
+  });
+
+  // 4) Time limit reached → end session
+  AppUsageMonitor.addListener("sessionEnded", (ev) => {
+    console.log("🔚 Session Ended:", ev);
+
+    if (ev.reachedLimit) {
+      endSession(true);
+    } else {
+      endSession(false);
+    }
+  });
+
+  console.log("🎉 All AppUsageMonitor listeners attached safely!");
+})();
+
 
 
 
