@@ -278,46 +278,51 @@
   
   
 <script>
-// --- START: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY ---
+// --- SCRIPT 1: platform + permissions + safe bridges (loads first) ---
+
+// Compatibility / mock for web
 if (typeof window.Capacitor === "undefined" || !window.Capacitor.isNativePlatform?.()) {
   console.warn("🧩 Running in Web Mode - using mock Capacitor plugins");
-
   window.Capacitor = {
     isNativePlatform: () => false,
     Plugins: {
-      App: {
-        addListener: (event, callback) => console.warn(`Mock App listener: ${event}`)
-      },
+      App: { addListener: (event, cb) => console.warn(`Mock App listener: ${event}`) },
       AppLauncher: {
         canOpenUrl: async () => ({ value: false }),
         openUrl: async ({ url }) => console.warn(`Mock openUrl: ${url}`)
       },
-      LocalNotifications: undefined // Keep undefined for fallback
+      LocalNotifications: undefined
     }
   };
 }
 
-// ✅ Global exposure for older code compatibility
 window.AppLauncher = window.Capacitor.Plugins.AppLauncher;
 window.App = window.Capacitor.Plugins.App;
 window.LocalNotifications = window.Capacitor.Plugins.LocalNotifications;
-// --- END: CRITICAL FIXES FOR WEB/NATIVE COMPATIBILITY ---
 
-
-// --- 🧩 MANUAL FALLBACK FOR CUSTOM PLUGIN (AppUsageMonitor) ---
+// Safe fallback for AppUsageMonitor if plugin isn't auto-registered
 document.addEventListener('DOMContentLoaded', async () => {
   if (!window.Capacitor.Plugins.AppUsageMonitor) {
     console.warn("⚠️ AppUsageMonitor not auto-registered, binding manually...");
     window.Capacitor.Plugins.AppUsageMonitor = {
       requestPermissions: async () => {
-        console.log("📱 Attempting to call native AppUsageMonitor.requestPermissions()");
+        console.log("📱 Mock AppUsageMonitor.requestPermissions()");
         return { status: "mock" };
+      },
+      startMonitoring: async ({ packages }) => {
+        console.log("📱 Mock AppUsageMonitor.startMonitoring()", packages);
+        return { status: "mock" };
+      },
+      // addListener mock - noop
+      addListener: (evt, cb) => {
+        console.log("Mock AppUsageMonitor addListener:", evt);
+        return { remove: () => {} };
       }
     };
   }
 });
 
-// --- MAIN APP INITIALIZATION (NON-BLOCKING) ---
+// Notification channel creation (safe)
 async function setupNotificationChannel() {
   try {
     if (!window.Capacitor.Plugins.LocalNotifications) {
@@ -336,19 +341,18 @@ async function setupNotificationChannel() {
       lights: true
     });
     console.log("✅ Notification channel created/updated");
+
+    const channels = await window.Capacitor.Plugins.LocalNotifications.listChannels();
+    console.log("📡 Registered channels:", channels);
   } catch (e) {
     console.warn("⚠️ Failed to create channel:", e);
   }
-  
-  // 👇  Add this right after
-const channels = await window.Capacitor.Plugins.LocalNotifications.listChannels();
-console.log("📡 Registered channels:", channels);
 }
 
+// Request system permissions via native plugin
 async function requestSystemPermissions() {
   try {
-    const { AppUsageMonitor } = window.Capacitor.Plugins;
-
+    const { AppUsageMonitor } = window.Capacitor.Plugins || {};
     if (!AppUsageMonitor) {
       console.warn("⚠️ AppUsageMonitor plugin not found.");
       return;
@@ -359,7 +363,6 @@ async function requestSystemPermissions() {
 
     if (result?.status === "already_granted" || result?.status === "all_permissions_granted") {
       console.log("✅ Ready to track apps!");
-      // ✅ Setup channel after permissions granted
       await setupNotificationChannel();
     } else if (result?.status === "pending_notification_permission") {
       console.log("🔔 Notification permission pending, please confirm on screen.");
@@ -371,37 +374,92 @@ async function requestSystemPermissions() {
   }
 }
 
-    // 🚀 START SESSION BUTTON LISTENER (CRITICAL FIX: MOVED OUT OF SHOWPAGE)
- async function startSessionHandler() {
-  const timeLimitInMinutes = parseInt(timeLimitInput.value);
-  const selectedApp = socialAppSelect.value;
-  localStorage.setItem('selectedApp', selectedApp);
-  currentSelectedApp = selectedApp;
-  console.log("selected APP", currentSelectedApp);
+// ---- Bridge functions that call into Script 2's implementations if available ----
+// Script 2 will define window.pauseTimerLocal and window.resumeTimerLocal
+function pauseTimerBridge() {
+  if (typeof window.pauseTimerLocal === 'function') {
+    window.pauseTimerLocal();
+  } else {
+    // Fallback: set a global flag so Script2 can pick it up
+    window.isPaused = true;
+  }
+}
+function resumeTimerBridge() {
+  if (typeof window.resumeTimerLocal === 'function') {
+    window.resumeTimerLocal();
+  } else {
+    window.isPaused = false;
+  }
+}
 
-  document.getElementById('selected-app-name').textContent = selectedApp;
+// Expose bridges globally (Script2 may call these or the native listeners can call)
+window.pauseTimerBridge = pauseTimerBridge;
+window.resumeTimerBridge = resumeTimerBridge;
 
-  if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
-    showAlert('Please enter a valid time limit.', 'error');
-    return;
+// Expose requestSystemPermissions to other scripts (Script2 calls it in init)
+window.requestSystemPermissions = requestSystemPermissions;
+
+console.log("Script1 loaded (permissions & bridges ready)");
+</script>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  console.log("Script2: DOMContentLoaded — initializing UI + timer");
+
+  // ---------------- DOM refs (adjust ids if yours differ) ----------------
+  const timerDisplay = document.getElementById('timer-display');
+  const timeLimitInput = document.getElementById('timeLimit') || document.getElementById('time-limit') || document.getElementById('timeLimitInput');
+  const socialAppSelect = document.getElementById('socialApp') || document.getElementById('social-app-select');
+  const startSessionBtn = document.getElementById('start-session-btn');
+  const endSessionBtn = document.getElementById('end-session-btn');
+  const trackerStatus = document.getElementById('tracker-status');
+  const loadingOverlay = document.getElementById('loading-overlay');
+
+  // sanity logs
+  if (!timerDisplay) console.error("❌ timer-display element not found");
+  if (!startSessionBtn) console.error("❌ start-session-btn not found");
+
+  // ---------------- timer state (local to Script2) ----------------
+  let accumulatedTime = 0;   // seconds (float)
+  let lastTick = 0;          // performance.now()
+  let isPaused = true;
+  let rafId = null;
+  let totalLimitSeconds = 0;
+  let notifScheduled = false;
+  let currentSelectedApp = null;
+  let resumeTimeout = null;
+
+  // expose some read-only debugging
+  window._debugTimerState = () => ({ accumulatedTime, lastTick, isPaused, totalLimitSeconds, currentSelectedApp });
+
+  // ---------------- pause/resume implementations used by Script1 bridge ----------------
+  function pauseTimerLocal() {
+    if (!isPaused) {
+      isPaused = true;
+      lastTick = performance.now(); // safe guard
+      if (trackerStatus) trackerStatus.textContent = `⏸️ Session paused for ${currentSelectedApp || 'app'}`;
+      console.log("⏸ pauseTimerLocal()");
+    }
+    // update global flag so Script1 fallback sees it
+    window.isPaused = true;
   }
 
-  showPage('tracker-card');
-
-  // ---- timer init (drift-free) ----
-  accumulatedTime = 0;
-  lastTick = performance.now();
-  isPaused = false;
-  totalLimitSeconds = timeLimitInMinutes * 60;
-  notifScheduled = false;
-
-  // cancel any previous RAF loop
-  if (rafId) {
-    cancelAnimationFrame(rafId);
-    rafId = null;
+  function resumeTimerLocal() {
+    if (isPaused) {
+      isPaused = false;
+      lastTick = performance.now(); // reset baseline so delta excludes pause duration
+      if (trackerStatus) trackerStatus.textContent = `▶️ Session resumed for ${currentSelectedApp || 'app'}`;
+      console.log("▶️ resumeTimerLocal()");
+    }
+    window.isPaused = false;
   }
 
-  // ---- tick loop ----
+  // export for Script1 to call
+  window.pauseTimerLocal = pauseTimerLocal;
+  window.resumeTimerLocal = resumeTimerLocal;
+
+  // ---------------- drift-free tick() ----------------
   function tick() {
     if (!isPaused) {
       const now = performance.now();
@@ -413,657 +471,169 @@ async function requestSystemPermissions() {
       const minutes = Math.floor(remaining / 60);
       const seconds = remaining % 60;
 
-      timerDisplay.textContent = `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
+      if (timerDisplay) {
+        timerDisplay.textContent = `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
+      }
 
+      // 1-minute warning
       if (remaining <= 60 && remaining > 0 && !notifScheduled) {
         notifScheduled = true;
-        scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp);
+        if (typeof scheduleOneMinuteWarning === 'function') {
+          scheduleOneMinuteWarning(Math.ceil(totalLimitSeconds / 60), currentSelectedApp);
+        }
       }
 
+      // time up
       if (remaining <= 0) {
-        // time reached
-        scheduleSessionEndNotification(selectedApp, timeLimitInMinutes);
-        endSession(true);
-        return; // stop ticking
+        if (typeof scheduleSessionEndNotification === 'function') {
+          scheduleSessionEndNotification(currentSelectedApp, Math.ceil(totalLimitSeconds / 60));
+        }
+        if (typeof endSession === 'function') {
+          endSession(true);
+        }
+        return;
       }
     }
+
     rafId = requestAnimationFrame(tick);
   }
 
-  rafId = requestAnimationFrame(tick);
-
-  // launch app after timer starts
-  try {
-    await openApp(selectedApp);
-  } catch (e) {
-    console.error(`${selectedApp} launch failed:`, e);
-  }
-}
-
-
-function pauseTimer() {
-  if (!isPaused) {
-    isPaused = true;
-    console.log("⏸️ Timer paused");
-    document.getElementById('tracker-status').textContent = `⏸️ Session paused (user left ${currentSelectedApp || 'app'})`;
-  }
-}
-
-function resumeTimer() {
-  if (isPaused) {
-    isPaused = false;
-    // prevent delta from including pause duration
-    lastTick = performance.now();
-    console.log("▶️ Timer resumed");
-    document.getElementById('tracker-status').textContent = `▶️ Session resumed for ${currentSelectedApp}`;
-  }
-}
-
-
-async function initApp() {
-  console.log("🚀 Initializing NoScroll App (Non-Blocking)...");
-
-  const startSessionBtn = document.getElementById('start-session-btn');
-  if (startSessionBtn) {
-    startSessionBtn.addEventListener('click', startSessionHandler);
-    console.log("✅ Start Session button listener attached");
-  } else {
-    console.error("❌ startSessionBtn element not found!");
-  }
-
-  await requestSystemPermissions();
-  console.log("✅ App initialization complete");
-}
-
-document.addEventListener('DOMContentLoaded', initApp);
-</script>
-
-
-
-
-  <script>
-  
-   // Get base API URL (ngrok or localhost)
-   const API_BASE_URL = "https://noscrollapplication.onrender.com";
-   console.log("Using API:", API_BASE_URL);
-  
-  const messages = [
-    "👏 Keep it up! You're building healthy habits.",
-    "🌟 Awesome! Stay consistent and you’ll see results.",
-    "🔥 Great discipline today!",
-    "💪 Strong work! Balance is everything."
-  ];
-
-  function getRandomMessage() {
-    return messages[Math.floor(Math.random() * messages.length)];
-  }
-  
-    // =======================================================
-    // 🌐 GLOBAL STATE AND UI ELEMENTS (CRITICAL FIX APPLIED)
-    // =======================================================
-    const setupCard = document.getElementById('setup-card');
-    const timeLimitCard = document.getElementById('time-limit-card');
-    const trackerCard = document.getElementById('tracker-card');
-    const limitReachedCard = document.getElementById('limit-reached-card');
-    const loadingOverlay = document.getElementById('loading-overlay');
-    const messageBox = document.getElementById('message-box');
-
-    const setupForm = document.getElementById('setup-form');
-    const userTypeRadios = document.getElementsByName('userType');
-    const parentFieldsDiv = document.getElementById('parent-fields');
-    
-    // 🚨 CRITICAL FIX: These must be looked up globally for timer functions 
-    // to access them without error.
-    const timeLimitInput = document.getElementById('timeLimit');
-    const timerDisplay = document.getElementById('timer-display');
-    const startSessionBtn = document.getElementById('start-session-btn');
-    const endSessionBtn = document.getElementById('end-session-btn');
-	const socialAppSelect = document.getElementById('socialApp');
-
-   
-	
-    // 🎯 FIX 3: Global state variables for pause logic (moved from the bottom of the file)
-    let sessionStart = null;       // When the session actually started
-    
-	let accumulatedTime = 0;     // seconds (float)
-let lastTick = 0;            // performance.now() timestamp in ms
-let isPaused = true;         // starts paused until session starts
-let rafId = null;            // requestAnimationFrame id
-let totalLimitSeconds = 0;   // session limit (secs)
-let notifScheduled = false;  // 1-minute warning flag
-let currentSelectedApp = null;
-let resumeTimeout = null;    // debounce for resume
-
-
-    // --- Message Box Function ---
-    function showAlert(message, type = 'success') {
-      if (!messageBox) {
-        alert(message); // fallback
-        return;
-      }
-      messageBox.textContent = message;
-      messageBox.className = 'message-box show ' + type;
-      setTimeout(() => messageBox.classList.remove('show'), 2500);
-    }
-
-    // --- Show Page Function ---
-    function showPage(pageId) {
-      const pages = [setupCard, timeLimitCard, trackerCard, limitReachedCard, document.getElementById('session-summary-card')];
-      
-      // Show motivational message if showing session summary
-      if (pageId === 'session-summary-card') {
-        const msgEl = document.querySelector('#session-summary-card p.text-green-600');
-        if (msgEl) msgEl.textContent = getRandomMessage();
-      }
-
-      pages.forEach(page => {
-        if (page.id === pageId) {
-          page.classList.remove('hidden');
-        } else {
-          page.classList.add('hidden');
-        }
-      });
-    }
-
-    // --- API Call: Log Usage ---
-    async function logUsage(timeLimit, timeSpentInSeconds) {
-      loadingOverlay.classList.remove('hidden');
-      const customerId = localStorage.getItem('customerId');
-      
-      const payload = {
-        action: "log_and_set_time",
-        customerId: customerId,
-        socialMediaApp: localStorage.getItem('selectedApp'), // Assuming the app name is static for simplicity
-        timeLimit: timeLimit,
-        timeSpent: timeSpentInSeconds,
-        usageDate: new Date().toISOString().split('T')[0] // 'YYYY-MM-DD'
-      };
-    
-      try {
-        const res = await fetch(API_BASE_URL + "/api/log-usage", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        const result = await res.json();
-    
-        if (res.ok && result.status === "success") {
-          showAlert('✅ Session ended. Usage log and time setting saved!', 'success');
-        } else {
-          showAlert(`❌ Error logging usage: ${result.message || 'Something went wrong'}`, 'error');
-        }
-      } catch (err) {
-        showAlert("❌ Network or API error during logging.", 'error');
-        console.error('Error logging usage:', err);
-      } finally {
-        loadingOverlay.classList.add('hidden');
-      }
-    }
-    
-    // Main End Session Logic
-    function endSession(isAutoEnd) {
-  // stop RAF loop
-  if (rafId) {
-    cancelAnimationFrame(rafId);
-    rafId = null;
-  }
-
-  // final elapsed seconds (rounded up)
-  const elapsedTimeInSeconds = Math.ceil(accumulatedTime);
-
-  const timeLimitInMinutes = parseInt(timeLimitInput.value) || 0;
-  const timeSpentInMinutes = Math.ceil(elapsedTimeInSeconds / 60);
-
-  // Log the usage
-  logUsage(timeLimitInMinutes, elapsedTimeInSeconds);
-
-  // Show correct card
-  if (isAutoEnd) {
-    showPage('limit-reached-card');
-  } else {
-    document.getElementById('summary-limit').textContent = timeLimitInMinutes;
-    document.getElementById('summary-spent').textContent = timeSpentInMinutes;
-    showPage('session-summary-card');
-  }
-}
-
-	
-	// --- Instagram Launcher ---
-    async function openApp(appName) {
-  // URLs for app + browser fallback
-  const APP_URLS = {
-    Instagram: { app: 'instagram://user?username=_', web: 'https://www.instagram.com/' },
-    Facebook:  { app: 'fb://', web: 'https://www.facebook.com/' },
-    YouTube:   { app: 'youtube://', web: 'https://www.youtube.com/' }
-  };
-
-  const urls = APP_URLS[appName] || APP_URLS["Instagram"];
-
-  try {
-    const canOpen = await window.AppLauncher.canOpenUrl({ url: urls.app });
-
-    if (canOpen.value) {
-      await window.AppLauncher.openUrl({ url: urls.app });
-    } else {
-      window.open(urls.web, '_blank');
-    }
-  } catch (e) {
-    console.error(`${appName} AppLauncher error, falling back to browser:`, e);
-    window.open(urls.web, '_blank');
-  }
-}
-   
-    // 🔹 Chart rendering
-    let summaryChart;
-    function renderSummaryChart(data, canvasElement) {
-      const ctx = canvasElement.getContext('2d');
-
-      const labels = data.map(d => d.date);
-      const limits = data.map(d => d.timeLimit);
-      const spent = data.map(d => d.timeSpent);
-
-      const spentColors = spent.map((s, i) =>
-        s > limits[i] ? "rgba(239,68,68,0.9)" : "rgba(16,185,129,0.9)"
-      );
-
-      if (canvasElement.chart) {
-        canvasElement.chart.destroy();
-      }
-
-      canvasElement.chart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: labels,
-          datasets: [
-            { label: "Time Limit", data: limits, backgroundColor: "rgba(59,130,246,0.7)" },
-            { label: "Time Spent", data: spent, backgroundColor: spentColors }
-          ]
-        },
-        options: { responsive: true, plugins: { legend: { position: "bottom" } } }
-      });
-
-      const storyDiv = document.createElement("div");
-      storyDiv.className = "mt-3 text-sm text-gray-700 space-y-1";
-
-      let within = 0, over = 0;
-      data.forEach((d, i) => {
-        let line = `Date(${d.date}): Limit ${d.timeLimit} mins, Spent ${d.timeSpent} mins → `;
-        if (d.timeSpent > d.timeLimit) {
-          line += `❌ Overused by ${d.timeSpent - d.timeLimit} mins`;
-          over++;
-        } else {
-          line += `✅ Within limit`;
-          within++;
-        }
-        const p = document.createElement("p");
-        p.textContent = line;
-        storyDiv.appendChild(p);
-      });
-
-      const summary = document.createElement("p");
-      summary.className = "font-semibold mt-2";
-      summary.textContent = `Summary: ${within} days within limit, ${over} days overused`;
-      storyDiv.appendChild(summary);
-
-      const summaryCard = canvasElement.closest('.summary-card');
-      const oldStory = summaryCard.querySelector("#usage-story");
-      if (oldStory) oldStory.remove();
-      storyDiv.id = "usage-story";
-      summaryCard.appendChild(storyDiv);
-    }
-   
-    // =======================================================
-    // ⚙️ MAIN APP INITIALIZATION AND EVENT LISTENERS
-    // =======================================================
-
-    window.onload = async function() {
-      const customerId = localStorage.getItem('customerId');
-      const storedEmail = localStorage.getItem("email");
-
-      loadingOverlay.classList.remove('hidden');
-
-      if (customerId) {
-        // Existing user: Check daily usage
-        try {
-          const res = await fetch(API_BASE_URL + "/api/log-usage", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "check_usage", customerId: customerId }),
-          });
-          const result = await res.json();
-          if (res.ok && result.salesforce_response.usedToday) {
-            showAlert('😴 You have reached your daily time limit.', 'success');
-            showPage('limit-reached-card');
-          } else {
-            showAlert('👋 Welcome back! Please set your new time limit.', 'success');
-            showPage('time-limit-card');
-          }
-        } catch (err) {
-          showAlert("❌ Network or API error during usage check.", 'error');
-          showPage('time-limit-card'); // Fallback to allow use
-        }
-      } else if (storedEmail) {
-        // New user but has stored email: Try to recover customerId
-        try {
-          const res = await fetch(API_BASE_URL + "/api/log-usage", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "get_customer_by_email", email: storedEmail }),
-          });
-          const result = await res.json();
-          if (res.ok && result.status === "success" && result.salesforce_response) {
-            localStorage.setItem("customerId", result.salesforce_response.customerId);
-            showPage("time-limit-card");
-          } else {
-            showPage('setup-card');
-          }
-        } catch (err) {
-          console.error("❌ Error during email recovery", err);
-          showPage('setup-card');
-        }
-      } else {
-        showPage('setup-card'); 
-      }
-	
-      loadingOverlay.classList.add('hidden');
-    };
-
-
-    // --- Setup Form Submission (DOMContentLoad needed for this) ---
-    document.addEventListener("DOMContentLoaded", () => {
-      // Parent/Individual radio button logic
-      userTypeRadios.forEach(radio => {
-        radio.addEventListener('change', (event) => {
-          if (event.target.value === 'Parent') {
-            parentFieldsDiv.classList.remove('hidden');
-          } else {
-            parentFieldsDiv.classList.add('hidden');
-          }
-        });
-      });
-
-      setupForm.addEventListener("submit", async (e) => {
-        e.preventDefault(); 
-        loadingOverlay.classList.remove("hidden");
-
-        const formData = new FormData(setupForm);
-        const payload = {
-          action: "setup",
-          customerName: formData.get("customerName"),
-          email: formData.get("email"),
-          age: parseInt(formData.get("age")),
-          userType: formData.get("userType"),
-          
-        };
-
-        if (payload.userType === "Parent") {
-          payload.childName = formData.get("childName");
-          payload.childEmail = formData.get("childEmail");
-        }
-
-        try {
-          const res = await fetch(API_BASE_URL + "/api/log-usage", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-
-          const result = await res.json();
-
-          if (res.ok && result.status === "success") {
-            const newCustomerId = result.salesforce_response.customerId;
-            const userEmail = result.salesforce_response.email;
-            localStorage.setItem("customerId", newCustomerId);
-            localStorage.setItem("email", userEmail);
-            showAlert("✅ Profile created successfully!", "success");
-            setTimeout(() => showPage("time-limit-card"), 500);
-          } else {
-            showAlert(`❌ ${result.message || "Something went wrong"}`, "error");
-          }
-        } catch (err) {
-          showAlert("❌ Network or server error", "error");
-          console.error(err);
-        } finally {
-          loadingOverlay.classList.add("hidden");
-        }
-      });
-    });
-	
-	
-
-
-
-
-	
-	
-	
-// 🚨 2. FINAL TIME LIMIT REACHED NOTIFICATION
-async function scheduleSessionEndNotification(selectedApp, timeLimitInMinutes) {
-  try {
-    const funnyMessages = [
-      `🎯 ${selectedApp} time limit (${timeLimitInMinutes} min) reached!`,
-      "😎 Great discipline! You’re off duty for today — come back tomorrow stronger!",
-      "🚫 App closed — detox mode on! 📵",
-      "👏 You did it! Time’s up — go touch some grass 🌿",
-      "🌙 Session complete. Time to relax and recharge!"
-    ];
-
-    const randomMessage = funnyMessages[Math.floor(Math.random() * funnyMessages.length)];
-
-    await window.LocalNotifications.schedule({
-      notifications: [{
-        id: 2,
-        title: "🕒 Session Complete!",
-        body: randomMessage,
-        schedule: { at: new Date(Date.now() + 1000) }, // Fire instantly (1s delay for execution safety)
-        sound: "default",
-        channelId: "alarm",
-        vibrate: true
-      }]
-    });
-    console.log("✅ Session end notification scheduled!");
-  } catch (e) {
-    console.error("❌ Failed to schedule end notification:", e);
-  }
-}	
-	// Helper function to schedule the notification
-async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
-    try {
-        await window.LocalNotifications.schedule({
-            notifications: [{
-                id: 1,
-                title: "⏳ Time almost up!",
-                body: `Only 1 minute left in your ${timeLimitInMinutes}-minute session on ${selectedApp}! Stay focused 💪`,
-                schedule: { at: new Date(Date.now() + 1000) }, // Fire instantly
-                sound: "default",
-				channelId: "alarm", // match the new channel
-                sound: "alarm",
-                vibrate: true
-            }]
-        });
-        console.log("✅ 1-minute warning successfully scheduled!");
-    } catch (e) {
-        console.error("❌ Failed to schedule notification:", e);
-    }
-}
-
-  
- 
-
- 
-
-
-
-
-    // End Session Button
-    endSessionBtn.addEventListener('click', () => {
-      endSession(false); // Manually end session
-    });
-    
-    // Summary Button Logic (Attached to all .pull-summary-btn)
-    document.querySelectorAll('.pull-summary-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const customerId = localStorage.getItem('customerId');
-        if (!customerId) {
-          showAlert("❌ No customer found. Please setup profile first.", "error");
-          return;
-        }
-
-        loadingOverlay.classList.remove('hidden');
-        try {
-          const res = await fetch(API_BASE_URL + "/api/log-usage", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "get_summary", customerId: customerId, days: 3 }),
-          });
-
-          const result = await res.json();
-
-          if (res.ok && result.status === "success") {
-            const sfResp = result.salesforce_response;
-            if (sfResp && sfResp.status === "success" && sfResp.data && sfResp.data.length > 0) {
-              
-              const template = document.getElementById('summary-template');
-              const clone = template.content.cloneNode(true);
-              const summaryCard = clone.querySelector('.summary-card');
-              const chartCanvas = clone.querySelector('.summary-chart');
-              
-              btn.insertAdjacentElement('afterend', summaryCard);
-
-              renderSummaryChart(sfResp.data, chartCanvas);
-
-              summaryCard.querySelector('.close-summary').addEventListener('click', () => {
-                summaryCard.remove();
-              });
-
-            } else {
-              showAlert("ℹ️ No summary data available.", "success");
-            }
-          } else {
-            showAlert("❌ Could not fetch summary", "error");
-          }
-        } catch (err) {
-          console.error(err);
-          showAlert("❌ Network or server error", "error");
-        } finally {
-          loadingOverlay.classList.add('hidden');
-        }
-      });
-    });
-
-
-// =======================================================
-// 📱 APP USAGE MONITOR — Detect Foreground App Changes
-// =======================================================
-(async function setupAppUsageMonitor() {
-  console.log("🧩 Setting up AppUsageMonitor plugin listener...");
-
-  const { AppUsageMonitor } = window.Capacitor.Plugins;
-  if (!AppUsageMonitor) {
-    console.warn("⚠️ AppUsageMonitor plugin not found!");
-    return;
-  }
-
-  // These are the apps we’re monitoring
-  const appsToMonitor = [
-    "com.instagram.android",
-    "com.facebook.katana",
-    "com.google.android.youtube"
-  ];
-
-  try {
-    await AppUsageMonitor.startMonitoring({ packages: appsToMonitor });
-    console.log("✅ AppUsageMonitor started for:	", appsToMonitor);
-  } catch (e) {
-    console.error("❌ Failed to start AppUsageMonitor:", e);
-    return;
-  }
-
-  // Listen for any monitored app’s state changes
- // 🔔 Listen for ANY foreground change (includes Home, WhatsApp, etc.)
- 
- let resumeTimeout = null;
-
-AppUsageMonitor.addListener("foregroundChange", (event) => {
-  const pkg = event.packageName;
-  const selectedPkg = getPackageName(currentSelectedApp);
-
-  // ✔️ If selected app is foreground → wait 300ms before resuming timer
-  // earlier code change to call functions
-if (pkg === selectedPkg) {
-  clearTimeout(resumeTimeout);
-  resumeTimeout = setTimeout(() => {
-    if (pkg === selectedPkg) resumeTimer();
-  }, 300);
-  return;
-}
-if (pkg !== selectedPkg) {
-  clearTimeout(resumeTimeout);
-  pauseTimer();
-}
-
-
-  // ✔️ ANY other situation → pause immediately
-  if (!isPaused) {
-    isPaused = true;
-    pauseStart = Date.now();
-    clearTimeout(resumeTimeout);
-    document.getElementById("tracker-status").textContent =
-      `⏸️ Paused — switched to ${pkg}`;
-    console.log("⏸️ Paused immediately");
-  }
-});
-
-
-
-  // Helper to map friendly names → package names
-  function getPackageName(appName) {
-    const map = {
-      Instagram: "com.instagram.android",
-      Facebook: "com.facebook.katana",
-      YouTube: "com.google.android.youtube"
-    };
-    return map[appName] || appName;
-  }
-})();
-
-
-// --- App State Change: Pause/Resume Tracker ---
-
-(async function setupAppStateListener() {
-  console.log("🟡 [NoScroll] Initializing appStateChange listener…");
-
-  // Wait for App plugin readiness
-  while (!window.Capacitor?.Plugins?.App) {
-    console.warn("⏳ App plugin not ready… retrying");
-    await new Promise(r => setTimeout(r, 300));
-  }
-
-  const App = window.Capacitor.Plugins.App;
-  console.log("✅ App plugin ready — listener attached.");
-
-  App.addListener("appStateChange", ({ isActive }) => {
-    console.log(`🔄 appStateChange → isActive=${isActive}`);
-
-    // ➜ If NoScroll app comes to FOREGROUND → PAUSE session
-    if (isActive) {
-      console.log("📱 NoScroll foreground → pausing timer");
-      pauseTimer();
-
-      if (currentSelectedApp) {
-        document.getElementById("tracker-status").textContent =
-          `⏸️ Session paused for ${currentSelectedApp}`;
-      }
+  // ---------------- startSessionHandler (uses DOM refs above) ----------------
+  async function startSessionHandler() {
+    const timeLimitInMinutes = parseInt((timeLimitInput && timeLimitInput.value) || '0', 10);
+    const selectedApp = (socialAppSelect && socialAppSelect.value) || null;
+    if (!selectedApp) {
+      if (typeof showAlert === 'function') showAlert('Please select an app', 'error');
       return;
     }
 
-    // ➜ If NoScroll app goes BACKGROUND → DO NOTHING HERE
-    // Resume MUST be handled ONLY by foregroundChange listener!
-    console.log("📤 NoScroll background → waiting for foregroundChange event");
-  });
-})();
+    currentSelectedApp = selectedApp;
+    window.currentSelectedApp = selectedApp;
+    console.log("▶️ Starting session for:", selectedApp);
 
+    if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
+      if (typeof showAlert === 'function') showAlert('Please enter a valid time limit.', 'error');
+      return;
+    }
 
+    if (typeof showPage === 'function') showPage('tracker-card');
+
+    // init timer
+    accumulatedTime = 0;
+    lastTick = performance.now();
+    isPaused = false;
+    totalLimitSeconds = timeLimitInMinutes * 60;
+    notifScheduled = false;
+
+    // cancel previous RAF
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+
+    rafId = requestAnimationFrame(tick);
+
+    // launch the selected app (openApp is defined later in your script)
+    try {
+      if (typeof openApp === 'function') {
+        await openApp(selectedApp);
+      } else if (window.AppLauncher && window.AppLauncher.openUrl) {
+        console.log("Fallback AppLauncher open request for", selectedApp);
+      }
+    } catch (e) {
+      console.error(`${selectedApp} launch failed:`, e);
+    }
+  }
+
+  // Attach start session
+  if (startSessionBtn) {
+    startSessionBtn.removeEventListener('click', startSessionHandler);
+    startSessionBtn.addEventListener('click', startSessionHandler);
+    console.log("✅ Start Session button listener attached (Script2)");
+  }
+
+  // Attach end session if exists
+  if (endSessionBtn) {
+    endSessionBtn.addEventListener('click', () => { if (typeof endSession === 'function') endSession(false); });
+  }
+
+  // ---------------- AppUsageMonitor setup & listeners (native) ----------------
+  (async function setupAppUsageMonitor() {
+    const { AppUsageMonitor } = window.Capacitor.Plugins || {};
+    if (!AppUsageMonitor) {
+      console.warn("⚠️ AppUsageMonitor plugin not found - skipping monitor setup.");
+      return;
+    }
+
+    const appsToMonitor = [
+      "com.instagram.android",
+      "com.facebook.katana",
+      "com.google.android.youtube"
+    ];
+
+    try {
+      await AppUsageMonitor.startMonitoring({ packages: appsToMonitor });
+      console.log("✅ AppUsageMonitor started for:", appsToMonitor);
+    } catch (e) {
+      console.error("❌ Failed to start AppUsageMonitor:", e);
+      return;
+    }
+
+    let resumeDeb = null;
+    AppUsageMonitor.addListener("foregroundChange", (event) => {
+      const pkg = event.packageName;
+      const selectedPkg = (currentSelectedApp && (function map(n){ const m = {Instagram:"com.instagram.android", Facebook:"com.facebook.katana", YouTube:"com.google.android.youtube"}; return m[n]||n;})(currentSelectedApp)) || currentSelectedApp;
+
+      // If selected app comes to foreground → debounce resume
+      if (pkg === selectedPkg) {
+        clearTimeout(resumeDeb);
+        resumeDeb = setTimeout(() => {
+          // call local resume
+          if (typeof window.resumeTimerLocal === 'function') window.resumeTimerLocal();
+        }, 300);
+        return;
+      }
+
+      // Otherwise pause immediately
+      if (typeof window.pauseTimerLocal === 'function') {
+        window.pauseTimerLocal();
+      } else {
+        window.pauseTimerBridge && window.pauseTimerBridge();
+      }
+    });
+  })();
+
+  // ---------------- App state listener (NoScroll app foreground/background) ----------------
+  (async function setupAppStateListener() {
+    while (!window.Capacitor?.Plugins?.App) {
+      await new Promise(r => setTimeout(r, 200));
+    }
+    const App = window.Capacitor.Plugins.App;
+    App.addListener("appStateChange", ({ isActive }) => {
+      if (isActive) {
+        // our app is foreground — pause session
+        if (typeof window.pauseTimerLocal === 'function') window.pauseTimerLocal();
+      } else {
+        // our app background — wait for foregroundChange (handled above)
+        console.log("NoScroll background — waiting for foregroundChange to decide resume");
+      }
+    });
+  })();
+
+  // Optionally call requestSystemPermissions (in Script1) from here if you want init from Script2:
+  if (typeof requestSystemPermissions === 'function') {
+    requestSystemPermissions();
+  } else {
+    console.warn("requestSystemPermissions not found in Script1");
+  }
+
+  // Final log
+  console.log("✅ Script2 initialized (timer + listeners ready)");
+}); // end DOMContentLoaded
 </script>
+
+
+
+  
 </body>
 </html>
