@@ -976,18 +976,31 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
   //-----------------------------------------
   // ⭐ 1) Start native timer in BACKGROUND
   //-----------------------------------------
-  try {
+  //-----------------------------------------
+// ⭐ 1) Start native timer in BACKGROUND
+//-----------------------------------------
+try {
+    // 💥 SAFE PLUGIN ACCESS
+    const AppUsageMonitor = window.Capacitor?.Plugins?.AppUsageMonitor;
+    if (!AppUsageMonitor) {
+        console.error("❌ AppUsageMonitor plugin not loaded yet");
+        showAlert("App still loading — try again in 1 second!", "error");
+        return;
+    }
+
     await AppUsageMonitor.startTimer({
-      packageName: packageName,
-      limitMinutes: timeLimitInMinutes
+        packageName: packageName,
+        limitMinutes: timeLimitInMinutes
     });
 
     console.log("✅ Native timer started successfully.");
-  } catch (e) {
+
+} catch (e) {
     console.error("❌ Failed to start native timer:", e);
     showAlert("Failed to start session timer!", "error");
     return;
-  }
+}
+
 
   //-----------------------------------------
   // ⭐ 2) Open the selected app
