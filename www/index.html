@@ -991,7 +991,7 @@ try {
 
     await AppUsageMonitor.startTimer({
         packageName: packageName,
-        limitMinutes: timeLimitInMinutes
+        limitMinutes: timeLimitInMinutes * 60
     });
 
     console.log("✅ Native timer started successfully.");
