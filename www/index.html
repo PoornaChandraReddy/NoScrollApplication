@@ -989,9 +989,9 @@ try {
         return;
     }
 
-    await AppUsageMonitor.startTimer({
-        packageName: packageName,
-        limitMinutes: timeLimitInMinutes * 60
+     await AppUsageMonitor.startTimer({
+        package: packageName,   // ✅ FIXED
+        limitSeconds: timeLimitInMinutes * 60
     });
 
     console.log("✅ Native timer started successfully.");
@@ -1173,9 +1173,5 @@ try {
   console.log("✅ Script2 initialized (timer + listeners ready)");
 }); // end DOMContentLoaded
 </script>
-
-
-
-  
 </body>
 </html>
