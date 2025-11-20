@@ -983,6 +983,11 @@ try {
     // 💥 SAFE PLUGIN ACCESS
     const AppUsageMonitor = window.Capacitor?.Plugins?.AppUsageMonitor;
 	console.log("Available methods on AppUsageMonitor:", Object.keys(AppUsageMonitor));
+	
+	console.log("🔥 AppUsageMonitor plugin:", window.Capacitor?.Plugins?.AppUsageMonitor);
+    console.log("🔥 Methods:", Object.keys(window.Capacitor?.Plugins?.AppUsageMonitor || {}));
+
+	
     if (!AppUsageMonitor) {
         console.error("❌ AppUsageMonitor plugin not loaded yet");
         showAlert("App still loading — try again in 1 second!", "error");
