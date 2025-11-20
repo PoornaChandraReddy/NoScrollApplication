@@ -350,6 +350,7 @@ async function setupNotificationChannel() {
 }
 
 // Request system permissions via native plugin
+// Request system permissions via native plugin
 async function requestSystemPermissions() {
   try {
     const { AppUsageMonitor } = window.Capacitor.Plugins || {};
@@ -358,11 +359,25 @@ async function requestSystemPermissions() {
       return;
     }
 
-    console.log("🔄 Calling AppUsageMonitor.requestPermissions()...");
+    // ----------------------------------------------------
+    // 1. CRITICAL NEW STEP: Check if permissions are already granted
+    // ----------------------------------------------------
+    const status = await AppUsageMonitor.checkPermissionStatus();
+
+    if (status.usageAccessGranted && status.overlayGranted && status.accessibilityEnabled) {
+      console.log("✅ All necessary permissions already granted. Skipping interactive request.");
+      await setupNotificationChannel();
+      return;
+    }
+    
+    // ----------------------------------------------------
+    // 2. If not granted, proceed with the full interactive request flow
+    // ----------------------------------------------------
+    console.log("🔄 Permissions missing. Calling AppUsageMonitor.requestPermissions() to start flow...");
     const result = await AppUsageMonitor.requestPermissions();
 
     if (result?.status === "already_granted" || result?.status === "all_permissions_granted") {
-      console.log("✅ Ready to track apps!");
+      console.log("✅ Permissions granted during session. Ready to track apps!");
       await setupNotificationChannel();
     } else if (result?.status === "pending_notification_permission") {
       console.log("🔔 Notification permission pending, please confirm on screen.");
@@ -1176,7 +1191,7 @@ try {
 
   // Final log
   console.log("✅ Script2 initialized (timer + listeners ready)");
-}); // end DOMContentLoad
+}); // end DOMContentLoaded
 </script>
 
 
