@@ -350,7 +350,6 @@ async function setupNotificationChannel() {
 }
 
 // Request system permissions via native plugin
-// Request system permissions via native plugin
 async function requestSystemPermissions() {
   try {
     const { AppUsageMonitor } = window.Capacitor.Plugins || {};
@@ -359,25 +358,11 @@ async function requestSystemPermissions() {
       return;
     }
 
-    // ----------------------------------------------------
-    // 1. CRITICAL NEW STEP: Check if permissions are already granted
-    // ----------------------------------------------------
-    const status = await AppUsageMonitor.checkPermissionStatus();
-
-    if (status.usageAccessGranted && status.overlayGranted && status.accessibilityEnabled) {
-      console.log("✅ All necessary permissions already granted. Skipping interactive request.");
-      await setupNotificationChannel();
-      return;
-    }
-    
-    // ----------------------------------------------------
-    // 2. If not granted, proceed with the full interactive request flow
-    // ----------------------------------------------------
-    console.log("🔄 Permissions missing. Calling AppUsageMonitor.requestPermissions() to start flow...");
+    console.log("🔄 Calling AppUsageMonitor.requestPermissions()...");
     const result = await AppUsageMonitor.requestPermissions();
 
     if (result?.status === "already_granted" || result?.status === "all_permissions_granted") {
-      console.log("✅ Permissions granted during session. Ready to track apps!");
+      console.log("✅ Ready to track apps!");
       await setupNotificationChannel();
     } else if (result?.status === "pending_notification_permission") {
       console.log("🔔 Notification permission pending, please confirm on screen.");
@@ -388,6 +373,7 @@ async function requestSystemPermissions() {
     console.error("❌ Error requesting permissions:", err);
   }
 }
+
 
 // ---- Bridge functions that call into Script 2's implementations if available ----
 // Script 2 will define window.pauseTimerLocal and window.resumeTimerLocal
