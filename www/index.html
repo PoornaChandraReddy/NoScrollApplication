@@ -140,6 +140,7 @@
   </style>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
+
   <div class="container">
   
     <div id="message-box" class="message-box"></div>
@@ -275,7 +276,14 @@
     </div>
 
   </div>
-  
+
+
+<script>console.log("LOADED: PUBLIC INDEX");</script>
+
+<script type="module" src="./plugins/AppUsageMonitor.js"></script>
+   <!-- Then your main logic -->
+  <script type="module" src="./main.js"></script>
+
   
 <script>
 // --- SCRIPT 1: platform + permissions + safe bridges (loads first) ---
@@ -402,6 +410,7 @@ window.requestSystemPermissions = requestSystemPermissions;
 
 console.log("Script1 loaded (permissions & bridges ready)");
 </script>
+
 
 
 <script>
@@ -938,71 +947,62 @@ async function scheduleOneMinuteWarning(timeLimitInMinutes, selectedApp) {
   // ---------------- startSessionHandler (uses DOM refs above) ----------------
      // 🚀 START SESSION BUTTON LISTENER (CRITICAL FIX: MOVED OUT OF SHOWPAGE)
  async function startSessionHandler() {
-  console.log("▶ START SESSION");
+    console.log("▶ START SESSION");
 
-  const timeLimitInMinutes = parseInt(timeLimitInput.value);
-  const selectedApp = socialAppSelect.value;
+    const timeLimitInMinutes = parseInt(timeLimitInput.value);
+    const selectedApp = socialAppSelect.value;
 
-  if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
-    showAlert('Please enter a valid time limit.', 'error');
-    return;
-  }
+    if (isNaN(timeLimitInMinutes) || timeLimitInMinutes <= 0) {
+        showAlert("Please enter a valid time limit.", "error");
+        return;
+    }
 
-  // Save selected app for later use
-  localStorage.setItem('selectedApp', selectedApp);
-  currentSelectedApp = selectedApp;
+    localStorage.setItem("selectedApp", selectedApp);
+    currentSelectedApp = selectedApp;
 
-  document.getElementById('selected-app-name').textContent = selectedApp;
+    document.getElementById("selected-app-name").textContent = selectedApp;
 
-  // Show tracker screen
-  showPage('tracker-card');
+    showPage("tracker-card");
 
-  console.log("⏳ Starting native timer for:", selectedApp);
+    const APP_PACKAGE_MAP = {
+        Instagram: "com.instagram.android",
+        Facebook: "com.facebook.katana",
+        YouTube: "com.google.android.youtube"
+    };
 
-  //----------------------------
-  // ⭐ MAP UI name → actual package name
-  //----------------------------
-  const APP_PACKAGE_MAP = {
-    Instagram: "com.instagram.android",
-    Facebook:  "com.facebook.katana",
-    YouTube:   "com.google.android.youtube"
-  };
+    const packageName = APP_PACKAGE_MAP[selectedApp];
+    if (!packageName) {
+        showAlert("Unknown app selected!", "error");
+        return;
+    }
+    // ---------------------------------------------------------
+    // ⭐ STEP 2 — Start native timer
+    // ---------------------------------------------------------
+    try {
+        await AppUsageMonitor.startTimer({
+            package: packageName,
+            limitSeconds: timeLimitInMinutes * 60
+        });
 
-  const packageName = APP_PACKAGE_MAP[selectedApp] || null;
-  if (!packageName) {
-    showAlert("Unknown app selected!", "error");
-    return;
-  }
+        console.log("✅ Native timer started successfully.");
+    } catch (e) {
+        console.error("❌ Failed to start native timer:", e);
+        showAlert(e?.message || "Failed to start session timer!", "error");
+        return;
+    }
 
-  //-----------------------------------------
-  // ⭐ 1) Start native timer in BACKGROUND
-  //-----------------------------------------
-try {
-    await AppUsageMonitor.startTimer({
-        package: packageName,
-        limitSeconds: timeLimitInMinutes * 60
-    });
+    // ---------------------------------------------------------
+    // ⭐ STEP 3 — Launch the target app
+    // ---------------------------------------------------------
+    try {
+        await openApp(selectedApp);
+    } catch (e) {
+        console.error(`${selectedApp} launch failed:`, e);
+    }
 
-    console.log("✅ Native timer started successfully.");
-
-} catch (e) {
-    console.error("❌ Failed to start native timer:", e);
-    showAlert("Failed to start session timer!", "error");
-    return;
+    console.log("🚀 Session fully started.");
 }
 
-
-  //-----------------------------------------
-  // ⭐ 2) Open the selected app
-  //-----------------------------------------
-  try {
-    await openApp(selectedApp);
-  } catch (e) {
-    console.error(`${selectedApp} launch failed:`, e);
-  }
-
-  console.log("🚀 Session fully started.");
-}
 
 
 // =====================================
